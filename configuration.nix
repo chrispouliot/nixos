@@ -17,11 +17,10 @@
 
   # Enable Flakes
   nix.settings.experimental-features = ["nix-command" "flakes"];
-
+  
   # Use latest kernel.
-  boot.kernelPackages = pkgs.linuxPackages_cachyos;
+  boot.kernelPackages = pkgs.linuxPackages_latest;
 
-  boot.initrd.luks.devices."luks-9f6107ef-5087-485d-bf98-cc11f45cc91e".device = "/dev/disk/by-uuid/9f6107ef-5087-485d-bf98-cc11f45cc91e";
   networking.hostName = "nixos"; # Define your hostname.
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
@@ -38,17 +37,16 @@
   # Select internationalisation properties.
   i18n.defaultLocale = "en_CA.UTF-8";
 
-  services.xserver = {
-    enable = true;
-    displayManager.gdm = {
-      enable = true;
-      wayland = true;
-    };
-    desktopManager.gnome = {
-      enable = true; 
-    };
-  };
+  # Enable the X11 windowing system.
+  services.xserver.enable = true;
+  # Swap win and alt keys for my keyboard in windows mode
+  services.xserver.xkb.options = "['altwin:swap_alt_win']";
 
+  # Enable the GNOME Desktop Environment.
+  services.displayManager.gdm.enable = true;
+  services.desktopManager.gnome.enable = true;
+
+  # Gnome experimental features
   programs.dconf.profiles.user.databases = [
     {
       lockAll = true; # prevents overriding
@@ -69,9 +67,6 @@
   # Enable CUPS to print documents.
   services.printing.enable = true;
 
-  # Flatpak and Flathub
-  services.flatpak.enable = true;
-
   # Enable sound with pipewire.
   services.pulseaudio.enable = false;
   security.rtkit.enable = true;
@@ -81,7 +76,7 @@
     alsa.support32Bit = true;
     pulse.enable = true;
     # If you want to use JACK applications, uncomment this
-    jack.enable = true;
+    #jack.enable = true;
 
     # use the example session manager (no others are packaged yet so this is enabled by default,
     # no need to redefine it in your config for now)
@@ -93,7 +88,6 @@
 
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.chris = {
-    shell = pkgs.fish;
     isNormalUser = true;
     description = "Chris";
     extraGroups = [ "networkmanager" "wheel" ];
@@ -101,13 +95,37 @@
     #  thunderbird
     ];
   };
-  programs.fish.enable = true;
 
-  # Install and condigure firefox
+  # Flatpak and Flathub
+  services.flatpak.enable = true;
+
+  # Enable AMD Graphics
+  hardware.graphics = {
+    enable = true;
+    enable32Bit = true;
+  };
+
+  # Enable the LACT systemd service
+  systemd.services.lact = {
+    description = "AMDGPU Control Daemon";
+    after = ["multi-user.target"];
+    wantedBy = ["multi-user.target"];
+    serviceConfig = {
+      ExecStart = "${pkgs.lact}/bin/lact daemon";
+    };
+    enable = true;
+  };
+  # Enable LACT OC for GPU
+  hardware.amdgpu.overdrive.enable = true;
+
+  # Install firefox.
   programs.firefox.enable = true;
 
   # Install and configure Steam
   programs.steam.enable = true;
+
+  # Enable tailscale
+  services.tailscale.enable = true;
 
   # Configure Firefox PWA
   programs.firefox.nativeMessagingHosts.packages = [ pkgs.firefoxpwa ];
@@ -118,33 +136,21 @@
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
-    wget
-    vim
+  #  vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
+  #  wget
+    vim wget git helix
     gnomeExtensions.appindicator
     gnome-tweaks
-    sof-firmware
-    alsa-utils
-    alsa-firmware
     linux-firmware
     firefoxpwa
-    intel-media-driver
+    mission-center
+    lact
+    mangohud
+    ffmpeg_6-full exiftool
+    android-udev-rules
+    chromium
+    remmina
   ];
-
-  # Enable tailscale
-  services.tailscale.enable = true;
-
-  # Hardware decode support
-    # hardware graphics extra packages
-  hardware.graphics = {
-    enable = true;
-    extraPackages = with pkgs; [
-      vpl-gpu-rt
-      libvdpau-va-gl
-      intel-media-driver
-      intel-compute-runtime
-    ];
-    extraPackages32 = with pkgs.pkgsi686Linux; [ intel-vaapi-driver ];
-  };
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
