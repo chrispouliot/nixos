@@ -136,7 +136,6 @@
       set -eu
       find /mnt/ssd2/Plex/downloads -type f -mtime +45 -delete
     '';
-    path = [pkgs.findutils];
     serviceConfig = {
       Type = "oneshot";
       User = "root";
