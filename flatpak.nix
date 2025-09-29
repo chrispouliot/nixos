@@ -5,9 +5,10 @@ let
   # 1. Declare the Flatpaks you *want* on your system
   desiredFlatpaks = [
     # "org.onlyoffice.desktopeditors"
-    "io.missioncenter.MissionCenter"
     "com.github.tchx84.Flatseal"
     "dev.qwery.AddWater"
+    "com.parsecgaming.parsec"
+    "us.zoom.Zoom"
     "dev.vencord.Vesktop"
   ];
 in {
