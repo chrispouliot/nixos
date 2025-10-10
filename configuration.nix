@@ -150,6 +150,8 @@
     android-udev-rules
     chromium
     remmina
+    parsec-bin
+    sbctl
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
