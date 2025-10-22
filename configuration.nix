@@ -39,8 +39,6 @@
 
   # Enable the X11 windowing system.
   services.xserver.enable = true;
-  # Swap win and alt keys for my keyboard in windows mode
-  services.xserver.xkb.options = "['altwin:swap_alt_win']";
 
   # Enable the GNOME Desktop Environment.
   services.displayManager.gdm.enable = true;
@@ -54,9 +52,13 @@
         "org/gnome/mutter" = {
           experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling"];
         };
+        "org/gnome/desktop/input-sources" = {
+          xkb-options = [ "altwin:swap_alt_win"];
+        };
       };
     }
   ];
+
 
   # Configure keymap in X11
   services.xserver.xkb = {
