@@ -16,16 +16,11 @@
   boot.loader.efi.canTouchEfiVariables = true;
 
   # Use latest kernel.
-  boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelPackages = pkgs.linuxPackages_cachyos;
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
   networking.hostName = "laptop"; # Define your hostname.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
-
-  # Configure network proxy if necessary
-  # networking.proxy.default = "http://user:password@proxy:port/";
-  # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
 
   # Enable networking
   networking.networkmanager.enable = true;
@@ -35,6 +30,37 @@
 
   # Select internationalisation properties.
   i18n.defaultLocale = "en_CA.UTF-8";
+
+  # Set to schedutil and passive so Energy Aware Scheduling works for Intel Lunar Lake
+  powerManagement.cpuFreqGovernor = "schedutil";
+  boot.kernelParams = [ "intel_pstate=passive" ];
+  # Enable TLP and disable Gnome's built-in PPD
+  services.power-profiles-daemon.enable = false;
+  services.tlp = {
+    enable = true;
+    settings = {
+      CPU_DRIVER_OPMODE_ON_AC="passive";
+      CPU_DRIVER_OPMODE_ON_BAT="passive";
+
+      CPU_SCALING_GOVERNOR_ON_AC = "schedutil";
+      CPU_SCALING_GOVERNOR_ON_BAT = "schedutil";
+      #CPU_SCALING_MIN_FREQ_ON_AC=423000;
+      #CPU_SCALING_MAX_FREQ_ON_AC=4000000;
+      #CPU_SCALING_MIN_FREQ_ON_BAT=423000;
+      #CPU_SCALING_MAX_FREQ_ON_BAT=3800000;
+      #CPU_BOOST_ON_AC=0;
+      #CPU_BOOST_ON_BAT=0;
+      CPU_MIN_PERF_ON_AC=0;
+      CPU_MAX_PERF_ON_AC=90;
+      CPU_MIN_PERF_ON_BAT=0;
+      CPU_MAX_PERF_ON_BAT=65;
+
+      #Optional helps save long term battery health
+      #START_CHARGE_THRESH_BAT0 = 40; # 40 and below it starts to charge
+      #STOP_CHARGE_THRESH_BAT0 = 80; # 80 and above it stops charging
+
+      };
+  };
 
   # Enable the X11 windowing system.
   services.xserver.enable = true;
@@ -52,6 +78,9 @@
       settings = {
         "org/gnome/mutter" = {
           experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling"];
+        };
+        "org/gnome/desktop/input-sources" = {
+          xkb-options = [ "altwin:swap_alt_win"];
         };
       };
     }
