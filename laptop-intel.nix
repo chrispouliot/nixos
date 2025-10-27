@@ -182,6 +182,7 @@
     firefoxpwa
     mission-center
     spotify
+    spotify-player
     sbctl
     lm_sensors
   ];
