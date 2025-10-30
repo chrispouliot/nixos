@@ -123,13 +123,24 @@
   };
 
   # systemd timer job to delete downloads older than 45 days, run once a day at midnight
-  systemd.timers."delete-old-downloads" = {
-    wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "daily";
-        Persistent = "true";
-        Unit = "delete-old-downloads.service";
-      };
+  # systemd timer to restart qbittorrent once daily, since connections sometimes drop with vpn + qbit after a day
+  systemd.timers = { 
+    "delete-old-downloads" = { 
+      wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "daily";
+          Persistent = "true";
+          Unit = "delete-old-downloads.service";
+        };
+    };
+    "restart-qbit" = {
+      wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "daily";
+          Persistent = "true";
+          Unit = "restart-qbit.service";
+        };
+    };
   };
   systemd.services."delete-old-downloads" = {
     script = ''
@@ -141,6 +152,20 @@
       User = "root";
     };
   };
+  systemd.services."restart-qbit" = {
+    path = [
+        pkgs.docker
+      ];
+    script = ''
+      set -eu
+      docker restart qbittorrent
+    '';
+    serviceConfig = {
+      Type = "oneshot";
+      User = "root";
+    };
+  };
+
 
 
   # Tailscale
