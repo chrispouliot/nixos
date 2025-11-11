@@ -20,7 +20,7 @@
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
-  networking.hostName = "laptop"; # Define your hostname.
+  networking.hostName = "nixos"; # Define your hostname.
 
   # Enable networking
   networking.networkmanager.enable = true;
@@ -50,9 +50,9 @@
       #CPU_SCALING_MAX_FREQ_ON_BAT=3800000;
       #CPU_BOOST_ON_AC=0;
       #CPU_BOOST_ON_BAT=0;
-      CPU_MIN_PERF_ON_AC=0;
+      CPU_MIN_PERF_ON_AC=40;
       CPU_MAX_PERF_ON_AC=90;
-      CPU_MIN_PERF_ON_BAT=0;
+      CPU_MIN_PERF_ON_BAT=25;
       CPU_MAX_PERF_ON_BAT=65;
 
       #Optional helps save long term battery health
@@ -65,7 +65,7 @@
   # Enable the X11 windowing system.
   services.xserver.enable = true;
   # Swap win and alt keys for my keyboard in windows mode
-  services.xserver.xkb.options = "['altwin:swap_alt_win']";
+  #services.xserver.xkb.options = "['altwin:swap_alt_win']";
 
   # Enable the GNOME Desktop Environment.
   services.displayManager.gdm.enable = true;
@@ -174,9 +174,8 @@
   environment.systemPackages = with pkgs; [
   #  vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
   #  wget
-    vim wget git helix
+    vim wget git helix starship
     gnomeExtensions.appindicator
-    gnomeExtensions.framework-fan-control
     gnome-tweaks
     linux-firmware
     firefoxpwa
@@ -185,6 +184,7 @@
     spotify-player
     sbctl
     lm_sensors
+    chromium
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
