@@ -15,16 +15,16 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  boot.kernelParams = ["acpi_backlight=native"]; # Allows laptop display brightness change when on iGPU
+
   # Enable Flakes
   nix.settings.experimental-features = ["nix-command" "flakes"];
 
-  boot.initrd.luks.devices."luks-107fab0c-a745-4229-ac63-144705c8e1de".device = "/dev/disk/by-uuid/107fab0c-a745-4229-ac63-144705c8e1de";
+  boot.initrd.luks.devices."luks-ddec9c5b-ad47-4452-8d40-a69b9cb2ccde".device = "/dev/disk/by-uuid/ddec9c5b-ad47-4452-8d40-a69b9cb2ccde";
   networking.hostName = "nixos"; # Define your hostname.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
-  # Configure network proxy if necessary
-  # networking.proxy.default = "http://user:password@proxy:port/";
-  # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
+  # Enable zram swap
+  zramSwap.enable = true;
 
   # Enable networking
   networking.networkmanager.enable = true;
@@ -37,7 +37,15 @@
 
   # Env vars
   environment.variables = {
-    GSK_RENDERER = "ngl"; # use new openGL renderer instead of vulkan for gtk vulkan slowdown on nvidia bug
+    #GSK_RENDERER = "ngl"; # use new openGL renderer instead of vulkan for gtk vulkan slowdown on nvidia bug
+
+    # GSK_RENDERER="ngl" is not needed if following env vars are set.
+    # This stops the nvidia dGPU from being used for vulkan stuff?
+    # Also removes gnome-shell from appearing in nvidia-smi with small resource usage
+    # https://gitlab.gnome.org/GNOME/mutter/-/issues/2969
+    __EGL_VENDOR_LIBRARY_FILENAMES="/${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+    __GLX_VENDOR_LIBRARY_NAME="mesa";
+
   };
 
   # Enable the X11 windowing system.
@@ -54,9 +62,6 @@
       settings = {
         "org/gnome/mutter" = {
           experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling"];
-        };
-        "org/gnome/desktop/input-sources" = {
-          xkb-options = [ "altwin:swap_alt_win"];
         };
       };
     }
@@ -79,7 +84,7 @@
   services.xserver.videoDrivers = ["nvidia" "amdgpu"];
   hardware.nvidia = {
     modesetting.enable = true;
-    powerManagement.enable = true;
+    powerManagement.enable = true; # Disable until Gnome flicker when dGPU wake/sleep is fixed
     powerManagement.finegrained = false;
     open = true;
     package = config.boot.kernelPackages.nvidiaPackages.beta;
@@ -102,6 +107,9 @@
       enableUserService = true;
     };
   };
+
+  # Enable linux-firmware incase that helps with compatability on laptop
+  hardware.enableRedistributableFirmware = true;
 
   # Enable CUPS to print documents.
   services.printing.enable = true;
