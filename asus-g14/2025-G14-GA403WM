@@ -1,40 +1,4 @@
-# Edit this configuration file to define what should be installed on
-# your system.  Help is available in the configuration.nix(5) man page
-# and in the NixOS manual (accessible by running ‘nixos-help’).
-
-# This is a messy NixOS Config file until I know the syntax a bit better.
-
 { config, pkgs, lib, ... }:
-
-let
-  # Script to disable the dGPU when in Integrated mode and waking from sleep.
-  # The Nvidia dGPU tends to turn itself back on after wake from sleep even if not in Hybrid mode
-  dgpuDisableScript = pkgs.writeShellScriptBin "dgpu-disable" ''
-    #!${pkgs.bash}/bin/bash
-    
-    mode=$(supergfxctl -g)
-    state=$(supergfxctl -S)
-
-    #toggle modes if we're in Integrated and the dGPU is awake
-    if [ $state == active ]; then
-        if [ $mode == Integrated ]; then
-            supergfxctl -m Vfio
-            sleep 1
-            supergfxctl -m Integrated
-        exit
-        fi
-    fi
-
-    #toggle modes if we're in Integrated and the dGPU is on the PCI bus.
-    if [ $mode == Integrated ]; then
-        if [ -d "/sys/bus/pci/devices/0000:64:00.0" ]; then
-            supergfxctl -m Vfio
-            sleep 1
-            supergfxctl -m Integrated
-        fi
-    fi
-  '';
-in
 {
   imports =
     [ # Include the results of the hardware scan.
@@ -46,7 +10,14 @@ in
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  boot.kernelParams = ["acpi_backlight=native"]; # Allows laptop display brightness change when on iGPU
+  boot.kernelParams = [
+    "acpi_backlight=native"  # Allows laptop display brightness change when on iGPU
+    "nvidia.NVreg_EnableBacklightHandler=0"
+    "nvidia.NVreg_RegistryDwords=EnableBrightnessControl=0"
+    "usbcore.autosuspend=-1" # Disable USB suspend to see if it helps with monitor wake delay moving windows off external display
+    "amdgpu.cwsr_enable=0" # Disable some AMD sleep thing, which caused "VPE Queue reset timeout" errors when waking laptop
+  ];
+  boot.kernelPackages = pkgs.linuxPackages_latest;
 
   # Enable Flakes
   nix.settings.experimental-features = ["nix-command" "flakes"];
@@ -57,8 +28,18 @@ in
   # Enable zram swap
   zramSwap.enable = true;
 
-  # Enable networking
   networking.networkmanager.enable = true;
+  networking.wireless.iwd.settings = {
+    IPv6 = {
+      Enabled = false;
+    };
+    Settings = {
+      AutoConnect = true;
+    };
+  };
+  networking.networkmanager.wifi.backend = "iwd";
+  networking.networkmanager.wifi.powersave = false; # Seems to help with login delay (wifi recon issues?)
+  systemd.services.NetworkManager-wait-online.enable = false; # Testing this to see if it helps
 
   # Set your time zone.
   time.timeZone = "America/Vancouver";
@@ -68,28 +49,13 @@ in
 
   # Env vars
   environment.variables = {
-    GSK_RENDERER = "ngl"; # use new openGL renderer instead of vulkan for gtk vulkan slowdown on nvidia bug
-
+    GSK_RENDERER = "gl"; # use new openGL renderer instead of vulkan for gtk vulkan slowdown on nvidia bug
     # This stops the nvidia dGPU from being used for vulkan stuff?
     # Also removes gnome-shell from appearing in nvidia-smi with small resource usage
     # https://gitlab.gnome.org/GNOME/mutter/-/issues/2969
     __EGL_VENDOR_LIBRARY_FILENAMES="/${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
     __GLX_VENDOR_LIBRARY_NAME="mesa";
 
-  };
-
-  # Systemd service to turn off dGPU if on Integrated mode. It turns itself on after wake from suspend..
-  systemd.services.dgpuDisable = {
-      wantedBy = [ "suspend.target" "graphical.target" ];
-      before = ["graphical.target"];
-      after = [ "suspend.target" ];
-      description = "Disable dGPU after wake from suspend if on Integrated mode";
-      path = [pkgs.supergfxctl];
-      serviceConfig = {
-        Type = "simple";
-        User = "root";
-        ExecStart = "${lib.getExe dgpuDisableScript}";
-      };
   };
 
   # Enable the X11 windowing system.
@@ -99,13 +65,14 @@ in
   services.displayManager.gdm.enable = true;
   services.desktopManager.gnome.enable = true;
 
-    # Gnome experimental features
+  # Gnome experimental features
   programs.dconf.profiles.user.databases = [
     {
       lockAll = true; # prevents overriding
       settings = {
         "org/gnome/mutter" = {
           experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling"];
+          workspaces-only-on-primary = false;
         };
       };
     }
@@ -158,6 +125,18 @@ in
 
   # Enable CUPS to print documents.
   services.printing.enable = true;
+
+  # Enable direnv for automatic env loading per directory, especially for nix-shell envs
+  programs.direnv = {
+    enable = true;
+    settings = {
+      global = {
+        log_format = "-";
+        log_filter = "^$";
+        hide_env_diff = true;
+      };
+    };
+  };
 
   # Enable sound with pipewire.
   services.pulseaudio.enable = false;
@@ -219,21 +198,19 @@ in
 
   # List packages installed in system profile. To search, run:
   # Spam pkgs until I can figure out the with pkgs; and script var syntax
-  environment.systemPackages = [
-    dgpuDisableScript
-    pkgs.vim pkgs.wget pkgs.git pkgs.helix pkgs.starship
-    pkgs.gnomeExtensions.appindicator
-    pkgs.gnome-tweaks
-    pkgs.linux-firmware
-    pkgs.firefoxpwa
-    pkgs.mission-center
-    pkgs.spotify
-    pkgs.spotify-player
-    pkgs.sbctl
-    pkgs.lm_sensors
-    pkgs.chromium
-    pkgs.mangohud
-    pkgs.lshw pkgs.powertop pkgs.nvtopPackages.full pkgs.qastools
+  environment.systemPackages = with pkgs; [
+    vim wget git helix starship
+    gnomeExtensions.appindicator
+    gnome-tweaks
+    linux-firmware
+    firefoxpwa
+    mission-center
+    spotify
+    spotify-player
+    sbctl
+    lm_sensors
+    mangohud
+    lshw lsof powertop nvtopPackages.full qastools
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
