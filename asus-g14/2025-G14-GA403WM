@@ -1,3 +1,7 @@
+# Edit this configuration file to define what should be installed on
+# your system.  Help is available in the configuration.nix(5) man page
+# and in the NixOS manual (accessible by running ‘nixos-help’).
+
 { config, pkgs, lib, ... }:
 {
   imports =
@@ -11,13 +15,13 @@
   boot.loader.efi.canTouchEfiVariables = true;
 
   boot.kernelParams = [
-    "acpi_backlight=native"  # Allows laptop display brightness change when on iGPU
+    "acpi_backlight=native"
     "nvidia.NVreg_EnableBacklightHandler=0"
     "nvidia.NVreg_RegistryDwords=EnableBrightnessControl=0"
     "usbcore.autosuspend=-1" # Disable USB suspend to see if it helps with monitor wake delay moving windows off external display
-    "amdgpu.cwsr_enable=0" # Disable some AMD sleep thing, which caused "VPE Queue reset timeout" errors when waking laptop
-  ];
-  boot.kernelPackages = pkgs.linuxPackages_latest;
+    #"amdgpu.cwsr_enable=0" # Disable some AMD sleep thing, which caused "VPE Queue reset timeout" errors when waking laptop
+  ]; # Allows laptop display brightness change when on iGPU
+  #boot.kernelPackages = pkgs.linuxPackages_latest;
 
   # Enable Flakes
   nix.settings.experimental-features = ["nix-command" "flakes"];
@@ -71,7 +75,7 @@
       lockAll = true; # prevents overriding
       settings = {
         "org/gnome/mutter" = {
-          experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling"];
+          experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling" "variable-refresh-rate"];
           workspaces-only-on-primary = false;
         };
       };
