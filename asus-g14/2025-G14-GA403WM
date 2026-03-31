@@ -14,36 +14,24 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  boot.blacklistedKernelModules = ["hid_logitech_dj"]; # This was spamming my journalctl and seemed like my logitech mouse acted weird
+
   boot.kernelParams = [
-    "acpi_backlight=native"
-    "nvidia.NVreg_EnableBacklightHandler=0"
-    "nvidia.NVreg_RegistryDwords=EnableBrightnessControl=0"
-    "usbcore.autosuspend=-1" # Disable USB suspend to see if it helps with monitor wake delay moving windows off external display
-    #"amdgpu.cwsr_enable=0" # Disable some AMD sleep thing, which caused "VPE Queue reset timeout" errors when waking laptop
-  ]; # Allows laptop display brightness change when on iGPU
-  #boot.kernelPackages = pkgs.linuxPackages_latest;
+    "acpi_backlight=native" # This allows backlight change when on Hybrid mode.
+    # For iGPU only backlight changing with the dGPU fully disabled, look into / try adding the following:
+    # "nvidia.NVreg_EnableBacklightHandler=0"
+    # "nvidia.NVreg_RegistryDwords=EnableBrightnessControl=0"
+  ];
 
   # Enable Flakes
   nix.settings.experimental-features = ["nix-command" "flakes"];
 
-  boot.initrd.luks.devices."luks-ddec9c5b-ad47-4452-8d40-a69b9cb2ccde".device = "/dev/disk/by-uuid/ddec9c5b-ad47-4452-8d40-a69b9cb2ccde";
   networking.hostName = "nixos"; # Define your hostname.
 
   # Enable zram swap
   zramSwap.enable = true;
 
   networking.networkmanager.enable = true;
-  networking.wireless.iwd.settings = {
-    IPv6 = {
-      Enabled = false;
-    };
-    Settings = {
-      AutoConnect = true;
-    };
-  };
-  networking.networkmanager.wifi.backend = "iwd";
-  networking.networkmanager.wifi.powersave = false; # Seems to help with login delay (wifi recon issues?)
-  systemd.services.NetworkManager-wait-online.enable = false; # Testing this to see if it helps
 
   # Set your time zone.
   time.timeZone = "America/Vancouver";
@@ -103,7 +91,7 @@
     powerManagement.finegrained = false;
     dynamicBoost.enable = true; # Needed to use more than 55w base on laptop
     open = true;
-    package = config.boot.kernelPackages.nvidiaPackages.beta;
+    package = config.boot.kernelPackages.nvidiaPackages.latest;
     prime = {
       offload = {
         enable = true;
@@ -120,7 +108,6 @@
   services = {
     asusd = {
       enable = true;
-      enableUserService = true;
     };
   };
 
@@ -179,14 +166,8 @@
     };
   };  
 
-  # Configure Firefox PWA
-  programs.firefox.nativeMessagingHosts.packages = [ pkgs.firefoxpwa ];
-
   # Flatpak and Flathub
   services.flatpak.enable = true;
-
-  # Install firefox.
-  programs.firefox.enable = true;
 
   # Enable tailscale
   services.tailscale.enable = true;
@@ -205,15 +186,17 @@
   environment.systemPackages = with pkgs; [
     vim wget git helix starship
     gnomeExtensions.appindicator
+    gnomeExtensions.media-controls
     gnome-tweaks
     linux-firmware
-    firefoxpwa
     mission-center
     spotify
     spotify-player
     sbctl
     lm_sensors
     mangohud
+    brave
+    menulibre
     lshw lsof powertop nvtopPackages.full qastools
   ];
 
