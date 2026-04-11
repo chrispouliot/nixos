@@ -1,7 +1,3 @@
-# Edit this configuration file to define what should be installed on
-# your system.  Help is available in the configuration.nix(5) man page
-# and in the NixOS manual (accessible by running ‘nixos-help’).
-
 { config, pkgs, lib, ... }:
 {
   imports =
@@ -169,12 +165,33 @@
   # Flatpak and Flathub
   services.flatpak.enable = true;
 
+  programs.firefox.enable = true;
+  programs.firefox.nativeMessagingHosts.packages = [ pkgs.firefoxpwa ];
+
   # Enable tailscale
   services.tailscale.enable = true;
 
   # Enable steam
   programs.steam.enable = true;
 
+  # Enable ollama, nvidia support
+  services.ollama = {
+    enable = true;
+    package = pkgs.ollama-cuda;
+    environmentVariables = {
+      OLLAMA_KV_CACHE_TYPE = "q8_0";
+    };
+  };
+  services.open-webui = {
+    enable = true;
+    environment = {
+      DATA_DIR = "/var/lib/open-webui";
+    };
+  };
+
+  # Enable cardwire for GPU on/off/hybrid support and nvidia lock
+  services.cardwire.enable = true;
+  
   # Firmware updates
   services.fwupd.enable = true;
 
@@ -194,8 +211,12 @@
     spotify-player
     sbctl
     lm_sensors
+    firefoxpwa
     mangohud
     brave
+    vesktop
+    obsidian
+    ollama-cuda
     menulibre
     lshw lsof powertop nvtopPackages.full qastools
   ];
