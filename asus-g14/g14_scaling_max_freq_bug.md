@@ -1,4 +1,4 @@
-Asus G14 Issue on USB C power where CPU frequency is stuck at 2ghz and does not raise to real hardware max.
+Asus G14 Issue on USB C power where CPU frequency is stuck at 2ghz after power platform change and does not raise to real hardware max.
 
 When platform profile changes (eg Balanced -> Quiet) occurs, amd_pstate correctly clamps cpu scaling_max_freq to 2ghz, but does not set it back
 to the correct maximum when the profile changes back to Balanced or Performance. This is especially evident when on USB C power and not the Asus power adapter.
