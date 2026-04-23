@@ -46,9 +46,6 @@
 
   };
 
-  # Enable the X11 windowing system.
-  services.xserver.enable = true;
-
   # Enable the GNOME Desktop Environment.
   services.displayManager.gdm.enable = true;
   services.desktopManager.gnome.enable = true;
@@ -83,7 +80,7 @@
   services.xserver.videoDrivers = ["nvidia" "amdgpu"];
   hardware.nvidia = {
     modesetting.enable = true;
-    powerManagement.enable = false; # Disable until Gnome flicker when dGPU wake/sleep is fixed
+    powerManagement.enable = true; # Required for dynamic boost
     powerManagement.finegrained = false;
     dynamicBoost.enable = true; # Needed to use more than 55w base on laptop
     open = true;
@@ -105,6 +102,13 @@
     asusd = {
       enable = true;
     };
+  };
+
+  # Clean up older nixos generations, free up space
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 15d";
   };
 
   # Enable linux-firmware incase that helps with compatability on laptop
@@ -182,12 +186,52 @@
       OLLAMA_KV_CACHE_TYPE = "q8_0";
     };
   };
+  systemd.services.ollama.serviceConfig.EnvironmentFile = "/etc/nixos/ollama.env";
   services.open-webui = {
     enable = true;
     environment = {
       DATA_DIR = "/var/lib/open-webui";
+      HOME = "/var/lib/open-webui";
     };
   };
+
+  # Asus G14 Issue on USB C power where CPU frequency is stuck at 2ghz and does not raise
+  # Re-assert hardware max scaling_max_freq whenever AC is connected.
+  # This works around amd_pstate not raising the cap when platform_profile
+  # transitions from quiet back to balanced/performance.
+  systemd.services.cpu-max-freq-on-ac = {
+    description = "Raise CPU scaling_max_freq to hardware max when on AC";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "set-max-freq-on-ac" ''
+        if [ "$(cat /sys/class/power_supply/ACAD/online 2>/dev/null)" = "1" ]; then
+          for cpu_dir in /sys/devices/system/cpu/cpu*/cpufreq; do
+            if [ -f "$cpu_dir/cpuinfo_max_freq" ] && [ -w "$cpu_dir/scaling_max_freq" ]; then
+              cat "$cpu_dir/cpuinfo_max_freq" > "$cpu_dir/scaling_max_freq"
+            fi
+          done
+        fi
+      '';
+    };
+  };
+
+  # Also run on boot (in case system boots already plugged in after a low-power state)
+  systemd.services.cpu-max-freq-boot = {
+    description = "Raise CPU scaling_max_freq on boot if on AC";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "asusd.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.systemd}/bin/systemctl start cpu-max-freq-on-ac.service";
+    };
+  };
+
+  # Trigger on AC plug-in via udev.
+  # Add a small delay so asusd's profile change completes first.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="power_supply", KERNEL=="ACAD", ATTR{online}=="1", RUN+="${pkgs.bash}/bin/bash -c '(sleep 6; ${pkgs.systemd}/bin/systemctl start cpu-max-freq-on-ac.service) &'"
+  '';
 
   # Enable cardwire for GPU on/off/hybrid support and nvidia lock
   services.cardwire.enable = true;
@@ -207,15 +251,15 @@
     gnome-tweaks
     linux-firmware
     mission-center
-    spotify
-    spotify-player
-    sbctl
     lm_sensors
     firefoxpwa
     mangohud
+    prismlauncher
     brave
     vesktop
     obsidian
+    feishin
+    flatpak-builder
     ollama-cuda
     menulibre
     lshw lsof powertop nvtopPackages.full qastools
