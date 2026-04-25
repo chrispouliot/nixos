@@ -19,6 +19,9 @@
     # "nvidia.NVreg_RegistryDwords=EnableBrightnessControl=0"
   ];
 
+  # Fix the Asus BIOS ACPI that would trigger dGPU wakeup on battery tick decrease
+  boot.initrd.prepend = [ "${./acpi-override.cpio}" ];
+
   # Enable Flakes
   nix.settings.experimental-features = ["nix-command" "flakes"];
 
@@ -80,7 +83,7 @@
   services.xserver.videoDrivers = ["nvidia" "amdgpu"];
   hardware.nvidia = {
     modesetting.enable = true;
-    powerManagement.enable = true; # Required for dynamic boost
+    powerManagement.enable = true; # Required for proper dynamic boost
     powerManagement.finegrained = false;
     dynamicBoost.enable = true; # Needed to use more than 55w base on laptop
     open = true;
@@ -214,7 +217,6 @@
       '';
     };
   };
-
   # Also run on boot (in case system boots already plugged in after a low-power state)
   systemd.services.cpu-max-freq-boot = {
     description = "Raise CPU scaling_max_freq on boot if on AC";
@@ -232,6 +234,17 @@
   services.udev.extraRules = ''
     SUBSYSTEM=="power_supply", KERNEL=="ACAD", ATTR{online}=="1", RUN+="${pkgs.bash}/bin/bash -c '(sleep 6; ${pkgs.systemd}/bin/systemctl start cpu-max-freq-on-ac.service) &'"
   '';
+
+  # Also run periodically, sometimes the udev rule does not work properly
+  systemd.timers.cpu-max-freq-watchdog = {
+    description = "Periodically re-assert CPU scaling_max_freq on AC";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "60s";
+      OnUnitActiveSec = "60s";
+      Unit = "cpu-max-freq-on-ac.service";
+    };
+  };
 
   # Enable cardwire for GPU on/off/hybrid support and nvidia lock
   services.cardwire.enable = true;
