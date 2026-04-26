@@ -14,10 +14,12 @@
 
   boot.kernelParams = [
     "acpi_backlight=native" # This allows backlight change when on Hybrid mode.
-    # For iGPU only backlight changing with the dGPU fully disabled, look into / try adding the following:
-    # "nvidia.NVreg_EnableBacklightHandler=0"
-    # "nvidia.NVreg_RegistryDwords=EnableBrightnessControl=0"
   ];
+  # Dont use nvidia to try and change display brightness. Dont wake up nvidia when brightness changes.
+  boot.extraModprobeConfig = ''
+    options nvidia NVreg_EnableBacklightHandler=0
+  '';
+
 
   # Fix the Asus BIOS ACPI that would trigger dGPU wakeup on battery tick decrease
   boot.initrd.prepend = [ "${./acpi-override.cpio}" ];
