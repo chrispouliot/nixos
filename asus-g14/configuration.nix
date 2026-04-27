@@ -4,6 +4,8 @@
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
       ./flatpak.nix
+      ./xhci-suspend-fixes.nix
+      ./cpu-max-freq.nix
     ];
 
   # Bootloader.
@@ -19,7 +21,6 @@
   boot.extraModprobeConfig = ''
     options nvidia NVreg_EnableBacklightHandler=0
   '';
-
 
   # Fix the Asus BIOS ACPI that would trigger dGPU wakeup on battery tick decrease
   boot.initrd.prepend = [ "${./acpi-override.cpio}" ];
@@ -197,54 +198,6 @@
     environment = {
       DATA_DIR = "/var/lib/open-webui";
       HOME = "/var/lib/open-webui";
-    };
-  };
-
-  # Asus G14 Issue on USB C power where CPU frequency is stuck at 2ghz and does not raise
-  # Re-assert hardware max scaling_max_freq whenever AC is connected.
-  # This works around amd_pstate not raising the cap when platform_profile
-  # transitions from quiet back to balanced/performance.
-  systemd.services.cpu-max-freq-on-ac = {
-    description = "Raise CPU scaling_max_freq to hardware max when on AC";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "set-max-freq-on-ac" ''
-        if [ "$(cat /sys/class/power_supply/ACAD/online 2>/dev/null)" = "1" ]; then
-          for cpu_dir in /sys/devices/system/cpu/cpu*/cpufreq; do
-            if [ -f "$cpu_dir/cpuinfo_max_freq" ] && [ -w "$cpu_dir/scaling_max_freq" ]; then
-              cat "$cpu_dir/cpuinfo_max_freq" > "$cpu_dir/scaling_max_freq"
-            fi
-          done
-        fi
-      '';
-    };
-  };
-  # Also run on boot (in case system boots already plugged in after a low-power state)
-  systemd.services.cpu-max-freq-boot = {
-    description = "Raise CPU scaling_max_freq on boot if on AC";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "asusd.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = "${pkgs.systemd}/bin/systemctl start cpu-max-freq-on-ac.service";
-    };
-  };
-
-  # Trigger on AC plug-in via udev.
-  # Add a small delay so asusd's profile change completes first.
-  services.udev.extraRules = ''
-    SUBSYSTEM=="power_supply", KERNEL=="ACAD", ATTR{online}=="1", RUN+="${pkgs.bash}/bin/bash -c '(sleep 6; ${pkgs.systemd}/bin/systemctl start cpu-max-freq-on-ac.service) &'"
-  '';
-
-  # Also run periodically, sometimes the udev rule does not work properly
-  systemd.timers.cpu-max-freq-watchdog = {
-    description = "Periodically re-assert CPU scaling_max_freq on AC";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnBootSec = "60s";
-      OnUnitActiveSec = "60s";
-      Unit = "cpu-max-freq-on-ac.service";
     };
   };
 
