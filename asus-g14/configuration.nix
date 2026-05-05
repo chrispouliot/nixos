@@ -1,11 +1,13 @@
 { config, pkgs, lib, ... }:
 {
   imports =
-    [ # Include the results of the hardware scan.
+    [
       ./hardware-configuration.nix
       ./flatpak.nix
       ./xhci-suspend-fixes.nix
       ./cpu-max-freq.nix
+      ./gamemode.nix
+      ./nvidia-backlight.nix
     ];
 
   # Bootloader.
@@ -17,10 +19,10 @@
   boot.kernelParams = [
     "acpi_backlight=native" # This allows backlight change when on Hybrid mode.
   ];
-  # Dont use nvidia to try and change display brightness. Dont wake up nvidia when brightness changes.
-  boot.extraModprobeConfig = ''
-    options nvidia NVreg_EnableBacklightHandler=0
-  '';
+  # Fix nvidia HDMI/USB C hotplug issue which would set nvidia backlight back to enabled, mirror nvidia to amd backlight
+  services.nvidia-backlight-mirror.enable = true;
+
+  boot.initrd.kernelModules = [ "amdgpu" ]; # Load AMD first to help with eDP enumeration vs Nvidia race condition
 
   # Fix the Asus BIOS ACPI that would trigger dGPU wakeup on battery tick decrease
   boot.initrd.prepend = [ "${./acpi-override.cpio}" ];
@@ -43,12 +45,12 @@
 
   # Env vars
   environment.variables = {
-    GSK_RENDERER = "gl"; # use new openGL renderer instead of vulkan for gtk vulkan slowdown on nvidia bug
+    #GSK_RENDERER = "gl"; # use new openGL renderer instead of vulkan for gtk vulkan slowdown on nvidia bug
     # This stops the nvidia dGPU from being used for vulkan stuff?
     # Also removes gnome-shell from appearing in nvidia-smi with small resource usage
     # https://gitlab.gnome.org/GNOME/mutter/-/issues/2969
-    __EGL_VENDOR_LIBRARY_FILENAMES="/${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
-    __GLX_VENDOR_LIBRARY_NAME="mesa";
+    #__EGL_VENDOR_LIBRARY_FILENAMES="/${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+    #__GLX_VENDOR_LIBRARY_NAME="mesa";
 
   };
 
@@ -100,7 +102,6 @@
       amdgpuBusId = "PCI:65:0:0";
     };
   };
-
 
   # Asus kernel and asus config
   services.supergfxd.enable = true;
@@ -226,7 +227,9 @@
     brave
     vesktop
     obsidian
+    zed-editor
     feishin
+    vscode
     flatpak-builder
     ollama-cuda
     menulibre
