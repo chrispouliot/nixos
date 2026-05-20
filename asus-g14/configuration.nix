@@ -1,13 +1,14 @@
 { config, pkgs, lib, ... }:
 {
   imports =
-    [
+    [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
       ./flatpak.nix
       ./xhci-suspend-fixes.nix
       ./cpu-max-freq.nix
       ./gamemode.nix
       ./nvidia-backlight.nix
+      ./helpers.nix
     ];
 
   # Bootloader.
@@ -51,7 +52,6 @@
     # https://gitlab.gnome.org/GNOME/mutter/-/issues/2969
     #__EGL_VENDOR_LIBRARY_FILENAMES="/${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
     #__GLX_VENDOR_LIBRARY_NAME="mesa";
-
   };
 
   # Enable the GNOME Desktop Environment.
@@ -182,28 +182,13 @@
   # Enable tailscale
   services.tailscale.enable = true;
 
-  # Enable steam
-  programs.steam.enable = true;
-
-  # Enable ollama, nvidia support
-  services.ollama = {
-    enable = true;
-    package = pkgs.ollama-cuda;
-    environmentVariables = {
-      OLLAMA_KV_CACHE_TYPE = "q8_0";
-    };
-  };
-  systemd.services.ollama.serviceConfig.EnvironmentFile = "/etc/nixos/ollama.env";
-  services.open-webui = {
-    enable = true;
-    environment = {
-      DATA_DIR = "/var/lib/open-webui";
-      HOME = "/var/lib/open-webui";
-    };
-  };
-
   # Enable cardwire for GPU on/off/hybrid support and nvidia lock
-  services.cardwire.enable = true;
+  services.cardwire = {
+    enable = true;
+    settings = {
+      experimental_nvidia_block = true;
+    };
+  };
   
   # Firmware updates
   services.fwupd.enable = true;
@@ -231,7 +216,7 @@
     feishin
     vscode
     flatpak-builder
-    ollama-cuda
+    collabora-desktop
     menulibre
     lshw lsof powertop nvtopPackages.full qastools
   ];
