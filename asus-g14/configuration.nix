@@ -3,11 +3,9 @@
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
-      ./flatpak.nix
       ./xhci-suspend-fixes.nix
       ./cpu-max-freq.nix
       ./gamemode.nix
-      ./nvidia-backlight.nix
       ./helpers.nix
     ];
 
@@ -20,8 +18,6 @@
   boot.kernelParams = [
     "acpi_backlight=native" # This allows backlight change when on Hybrid mode.
   ];
-  # Fix nvidia HDMI/USB C hotplug issue which would set nvidia backlight back to enabled, mirror nvidia to amd backlight
-  services.nvidia-backlight-mirror.enable = true;
 
   boot.initrd.kernelModules = [ "amdgpu" ]; # Load AMD first to help with eDP enumeration vs Nvidia race condition
 
@@ -77,7 +73,6 @@
     variant = "";
   };
 
-
   # Graphics for AMD
   hardware.graphics = {
     enable = true;
@@ -103,13 +98,8 @@
     };
   };
 
-  # Asus kernel and asus config
-  services.supergfxd.enable = true;
-  services = {
-    asusd = {
-      enable = true;
-    };
-  };
+  # Asusctl
+  services.asusd.enable = true;
 
   # Clean up older nixos generations, free up space
   nix.gc = {
@@ -144,16 +134,7 @@
     alsa.enable = true;
     alsa.support32Bit = true;
     pulse.enable = true;
-    # If you want to use JACK applications, uncomment this
-    #jack.enable = true;
-
-    # use the example session manager (no others are packaged yet so this is enabled by default,
-    # no need to redefine it in your config for now)
-    #media-session.enable = true;
   };
-
-  # Enable touchpad support (enabled default in most desktopManager).
-  # services.xserver.libinput.enable = true;
 
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.chris = {
@@ -172,9 +153,6 @@
         configDir = "/home/chris/.config/syncthing";   # Folder for Syncthing's settings and keys
     };
   };  
-
-  # Flatpak and Flathub
-  services.flatpak.enable = true;
 
   programs.firefox.enable = true;
   programs.firefox.nativeMessagingHosts.packages = [ pkgs.firefoxpwa ];
@@ -195,6 +173,26 @@
 
   # Allow unfree software
   nixpkgs.config.allowUnfree = true;
+
+  # Declare wanted flatpaks
+  services.flatpak = {
+    enable = true;
+    uninstallUnmanaged = false;
+    update.auto = { enable = true; onCalendar = "weekly"; };
+
+    packages = [
+      "org.onlyoffice.desktopeditors"
+      "com.github.tchx84.Flatseal"
+      "dev.qwery.AddWater"
+      "us.zoom.Zoom"
+      "com.jeffser.Nocturne"
+      "io.m51.Gelly"
+      "de.schmidhuberj.tubefeeder"
+      "page.codeberg.libre_menu_editor.LibreMenuEditor"
+      "com.moonlight_stream.Moonlight"
+      "io.github.alainm23.planify"
+    ];
+  };
 
   # List packages installed in system profile. To search, run:
   # Spam pkgs until I can figure out the with pkgs; and script var syntax
