@@ -2,16 +2,16 @@
   description = "My configuration";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-cachyos-kernel.url = "github:xddxdd/nix-cachyos-kernel/release";
     cardwire = {
-      url = "github:opengamingcollective/cardwire";
+      url = "github:opengamingcollective/cardwire/v0.10.0";
       #url = "path:/home/chris/Projects/cardwire";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cardwire-toggle = {
-      #url = "github:chrispouliot/cardwire-toggle";
-      url = "path:/home/chris/Projects/cardwire-toggle";
+      url = "github:chrispouliot/cardwire-toggle";
+      #url = "path:/home/chris/Projects/cardwire-toggle";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-flatpak.url = "github:gmodena/nix-flatpak/?ref=latest";
@@ -19,9 +19,17 @@
       url = "github:powerofthe69/nix-gaming-edge";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    wsf = {
+      url = "path:/home/chris/Projects/wayland-scroll-factor";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    touchpad-speed-control = {
+      url = "git+file:///home/chris/Projects/touchpad-speed-control";
+      flake = false;
+    };
   };
 
-  outputs = { nixpkgs, nix-cachyos-kernel, cardwire, cardwire-toggle, nix-flatpak, nix-gaming-edge, ... }@inputs:
+  outputs = { nixpkgs, nix-cachyos-kernel, cardwire, cardwire-toggle, nix-flatpak, nix-gaming-edge, wsf, ... }@inputs:
     {
       nixosConfigurations = {
         nixos = nixpkgs.lib.nixosSystem {
@@ -30,17 +38,10 @@
             inherit inputs;
           };
           modules = [
-            # Temporary firefox fix for 26.05
-              {
-                nixpkgs.overlays = [
-                (final: prev: {
-                  firefoxpwa-unwrapped = prev.firefoxpwa-unwrapped.overrideAttrs (old: {
-                    postInstall = (old.postInstall or "") + ''
-                      mkdir -p $out/lib/firefoxpwa
-                    '';
-                  });
-                })
-              ];
+            wsf.nixosModules.default
+            {
+              nixpkgs.overlays = [ wsf.overlays.default ];
+              programs.wsf.enable = true;
             }
             # Cachyos Kernel and proton
             ({ pkgs, ... }:
