@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 {
   imports =
     [ # Include the results of the hardware scan.
@@ -17,6 +17,7 @@
 
   boot.kernelParams = [
     "acpi_backlight=native" # This allows backlight change when on Hybrid mode.
+    "thunderbolt.clx=0" # Disable TB4 CLx states (low power lane management) to see if it helps with flaky USB connections
   ];
 
   boot.initrd.kernelModules = [ "amdgpu" ]; # Load AMD first to help with eDP enumeration vs Nvidia race condition
@@ -194,9 +195,10 @@
     ];
   };
 
-  # List packages installed in system profile. To search, run:
-  # Spam pkgs until I can figure out the with pkgs; and script var syntax
   environment.systemPackages = with pkgs; [
+    (pkgs.callPackage ./pkgs/touchpad-speed-control.nix {
+      src = inputs.touchpad-speed-control;
+    })
     vim wget git helix starship
     gnomeExtensions.appindicator
     gnomeExtensions.media-controls
