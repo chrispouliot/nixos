@@ -3,15 +3,16 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nix-cachyos-kernel.url = "github:xddxdd/nix-cachyos-kernel/release";
+    # Pinned to specific 7.0.12 kernel
+    nix-cachyos-kernel.url = "github:xddxdd/nix-cachyos-kernel/16b69e2ee5d498b0a6c4e7347a2a8400bf25d50d";
     cardwire = {
-      url = "github:opengamingcollective/cardwire/v0.10.0";
+      url = "github:opengamingcollective/cardwire/v0.10.2";
       #url = "path:/home/chris/Projects/cardwire";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cardwire-toggle = {
-      url = "github:chrispouliot/cardwire-toggle";
-      #url = "path:/home/chris/Projects/cardwire-toggle";
+      #url = "github:chrispouliot/cardwire-toggle";
+      url = "path:/home/chris/Projects/cardwire-toggle";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-flatpak.url = "github:gmodena/nix-flatpak/?ref=latest";
@@ -27,9 +28,21 @@
       url = "git+file:///home/chris/Projects/touchpad-speed-control";
       flake = false;
     };
+    medialine = {
+      url = "github:funinkina/medialine";
+      flake = false;
+    };
+    stamp = {
+      url = "git+file:///home/chris/Projects/stamp";
+      flake = false;
+    };
+    bubbles = {
+      url = "git+file:///home/chris/Projects/bubbles";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { nixpkgs, nix-cachyos-kernel, cardwire, cardwire-toggle, nix-flatpak, nix-gaming-edge, wsf, ... }@inputs:
+  outputs = { nixpkgs, nix-cachyos-kernel, cardwire, cardwire-toggle, nix-flatpak, nix-gaming-edge, wsf, bubbles, ... }@inputs:
     {
       nixosConfigurations = {
         nixos = nixpkgs.lib.nixosSystem {
@@ -54,14 +67,12 @@
               nix.settings = {
                 extra-substituters = [
                   "https://attic.xuyh0120.win/lantian"
-                  "https://nix-cache.tokidoki.dev/tokidoki"
                 ];
                 extra-trusted-public-keys = [
                   "lantian:EeAUQ+W+6r7EtwnmYjeVwx5kOGEBpjlBfPlzGlTNvHc="
-                  "tokidoki:MD4VWt3kK8Fmz3jkiGoNRJIW31/QAm7l1Dcgz2Xa4hk="
                 ];
               };
-              
+
               boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest-x86_64-v4;
               programs.steam = {
                 enable = true;
@@ -72,6 +83,8 @@
             cardwire.nixosModules.default
             cardwire-toggle.nixosModules.default
             nix-flatpak.nixosModules.nix-flatpak
+            # Locally made Bubbles app (Openbubbles GTK)
+            bubbles.nixosModules.default
             ./configuration.nix
           ];
         };
