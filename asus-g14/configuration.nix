@@ -7,6 +7,8 @@
       ./cpu-max-freq.nix
       ./gamemode.nix
       ./helpers.nix
+      ./agent-sandbox.nix
+      ./dock-recover.nix
     ];
 
   # Bootloader.
@@ -68,6 +70,24 @@
     }
   ];
 
+  # Gnome enable contacts sync and address book for WebDav
+  services.gnome.evolution-data-server.enable = true;
+  services.gnome.gnome-online-accounts.enable = true;
+
+  services.gnome.gnome-keyring.enable = true;
+  security.pam.services.login.enableGnomeKeyring = true;
+
+  # Fix TB4 PCIE d3cold issues and log spam
+  services.udev.extraRules = ''
+    ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x0b26", ATTR{d3cold_allowed}="0"
+  '';
+  powerManagement.resumeCommands = ''
+    ${pkgs.pciutils}/bin/lspci -s 02: >/dev/null 2>&1 || true
+    # only the TB bridge subtree, not the whole PCI tree
+    for b in /sys/bus/pci/devices/0000:02:0*.0/rescan; do echo 1 > "$b" 2>/dev/null || true; done
+  '';
+
+
   # Configure keymap in X11
   services.xserver.xkb = {
     layout = "us";
@@ -96,6 +116,19 @@
       };
       nvidiaBusId = "PCI:64:0:0";
       amdgpuBusId = "PCI:65:0:0";
+    };
+  };
+
+  # NixOS Flake-based llm agent sandboxes
+  programs.agentSandbox = {
+    enable = true;
+    defaultAgent = "opencode";
+    extraTools = ["jq"];
+    diskWarn = {
+      enable = true;
+      checkIntervalHours = 6;
+      minFreeGiB = 80; # Nix store size, including host
+      volumeWarnGiB = 30; # Podman volumes (per project combines)
     };
   };
 
@@ -153,13 +186,20 @@
         dataDir = "/home/chris/Documents";    # Default folder for new synced folders
         configDir = "/home/chris/.config/syncthing";   # Folder for Syncthing's settings and keys
     };
-  };  
+  };
 
   programs.firefox.enable = true;
   programs.firefox.nativeMessagingHosts.packages = [ pkgs.firefoxpwa ];
 
   # Enable tailscale
   services.tailscale.enable = true;
+
+  # Proton bridge
+  services.protonmail-bridge = {
+    enable = true;
+    path = with pkgs; [ pass gnupg ];
+  };
+  security.pki.certificateFiles = [ ./protonmail-bridge-cert.pem ]; # The Bridge SSL Cert
 
   # Enable cardwire for GPU on/off/hybrid support and nvidia lock
   services.cardwire = {
@@ -168,7 +208,10 @@
       experimental_nvidia_block = true;
     };
   };
-  
+
+  # Locally made Openbubbles GTK app
+  programs.bubbles.enable = true;
+
   # Firmware updates
   services.fwupd.enable = true;
 
@@ -192,20 +235,26 @@
       "page.codeberg.libre_menu_editor.LibreMenuEditor"
       "com.moonlight_stream.Moonlight"
       "io.github.alainm23.planify"
+      "io.github.tanaybhomia.Whisp"
+      "dev.nicx.mimick"
     ];
   };
 
   environment.systemPackages = with pkgs; [
-    (pkgs.callPackage ./pkgs/touchpad-speed-control.nix {
-      src = inputs.touchpad-speed-control;
-    })
-    vim wget git helix starship
+    # Local apps / extensions
+    (pkgs.callPackage ./pkgs/touchpad-speed-control.nix { src = inputs.touchpad-speed-control; })
+    (pkgs.callPackage ./pkgs/stamp.nix { src = inputs.stamp; })
+    (pkgs.callPackage ./pkgs/notif-icon-colour.nix { }) # Local gnome extension, src in file directly
+    (pkgs.callPackage ./pkgs/medialine.nix { src = inputs.medialine; })
+
+    # Gnome specific
     gnomeExtensions.appindicator
-    gnomeExtensions.media-controls
+    # gnomeExtensions.medialine # Not available in nixpkgs yet, manual install
+    gnomeExtensions.steal-my-focus-window
     gnome-tweaks
+
     linux-firmware
     mission-center
-    lm_sensors
     firefoxpwa
     mangohud
     prismlauncher
@@ -218,27 +267,15 @@
     flatpak-builder
     collabora-desktop
     menulibre
+
+    # Device utils
+    pciutils
+    lm_sensors
+    vim wget git helix starship ghostty
     lshw lsof powertop nvtopPackages.full qastools
+    gnupg pass # This is for keychain protonmail bridge stuff
   ];
 
-  # Some programs need SUID wrappers, can be configured further or are
-  # started in user sessions.
-  # programs.mtr.enable = true;
-  # programs.gnupg.agent = {
-  #   enable = true;
-  #   enableSSHSupport = true;
-  # };
-
-  # List services that you want to enable:
-
-  # Enable the OpenSSH daemon.
-  # services.openssh.enable = true;
-
-  # Open ports in the firewall.
-  # networking.firewall.allowedTCPPorts = [ ... ];
-  # networking.firewall.allowedUDPPorts = [ ... ];
-  # Or disable the firewall altogether.
-  # networking.firewall.enable = false;
 
   # This value determines the NixOS release from which the default
   # settings for stateful data, like file locations and database versions
