@@ -252,6 +252,7 @@
     # gnomeExtensions.medialine # Not available in nixpkgs yet, manual install
     gnomeExtensions.steal-my-focus-window
     gnome-tweaks
+    glycin-loaders # Temporary fix for gnome-contacts not coming with it (avatar loading)
 
     linux-firmware
     mission-center
