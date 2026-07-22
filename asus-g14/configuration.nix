@@ -9,6 +9,7 @@
       ./helpers.nix
       ./agent-sandbox.nix
       ./dock-recover.nix
+      ./asus-fan-curves.nix
     ];
 
   # Bootloader.
@@ -16,6 +17,9 @@
   boot.loader.efi.canTouchEfiVariables = true;
 
   boot.blacklistedKernelModules = ["hid_logitech_dj"]; # This was spamming my journalctl and seemed like my logitech mouse acted weird
+
+  boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
+  boot.kernelModules = [ "acpi_call" ];
 
   boot.kernelParams = [
     "acpi_backlight=native" # This allows backlight change when on Hybrid mode.
@@ -239,6 +243,11 @@
       "dev.nicx.mimick"
     ];
   };
+
+  # Vesktop needs old electron for now
+  nixpkgs.config.permittedInsecurePackages = [
+    "electron-40.10.5"
+  ];
 
   environment.systemPackages = with pkgs; [
     # Local apps / extensions
