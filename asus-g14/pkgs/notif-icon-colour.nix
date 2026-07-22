@@ -9,6 +9,7 @@ let
       "name": "Notification Icon Color",
       "description": "Force full-color app icons in GNOME notifications (body + header source icon)",
       "shell-version": ["50"],
+      "session-modes": ["user", "unlock-dialog"],
       "version": 1
     }
   '';
@@ -26,10 +27,11 @@ let
         -st-icon-style: regular !important;
     }
 
-    .message-source-icon {
+    .message .message-header .message-source-icon {
         -st-icon-style: regular !important;
     }
   '';
+
 in
 stdenv.mkDerivation {
   pname = "gnome-shell-extension-notif-icon-color";
