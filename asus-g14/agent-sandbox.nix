@@ -218,6 +218,9 @@ let
     DISKWARN_MIN_FREE_GIB="${toString cfg.diskWarn.minFreeGiB}"
     DISKWARN_VOLUME_GIB="${toString cfg.diskWarn.volumeWarnGiB}"
 
+    PRUNE_ENABLE="${lib.optionalString cfg.prune.enable "1"}"
+    PRUNE_ABOVE_GIB="${toString cfg.prune.aboveGiB}"
+
     STATE_DIR="''${XDG_STATE_HOME:-$HOME/.local/state}/agent-sandbox"
     mkdir -p "$STATE_DIR/projects"
     ${homeMountLine}
@@ -362,7 +365,12 @@ let
     # whole check is throttled to once per checkIntervalHours per (project,agent)
     # — keeping warm relaunches instant — with the last-run time stamped under
     # the state dir. Set checkIntervalHours = 0 to check on every launch.
-    if [ "$DISKWARN_ENABLE" = "1" ]; then
+    #
+    # The prune option piggybacks on the same throttled measurement: when the
+    # Rust target volume alone exceeds prune.aboveGiB, its contents are cleared
+    # (the volume itself stays; next build is cold). Only target — venv and
+    # node_modules regrow to a bounded size and don't accumulate the same way.
+    if [ "$DISKWARN_ENABLE" = "1" ] || [ "$PRUNE_ENABLE" = "1" ]; then
       CHECK_STAMP="$STATE_DIR/diskcheck-$IMGKEY"
       NOW="$(date +%s)"
       LAST=0; [ -f "$CHECK_STAMP" ] && LAST="$(cat "$CHECK_STAMP" 2>/dev/null || echo 0)"
@@ -386,22 +394,41 @@ let
             echo "  reclaim: nix-collect-garbage --delete-older-than 7d ; podman system prune -f" >&2
           fi
         }
-        warn_fs /nix/store "the nix store"
-        PODMAN_ROOT="$(podman info --format '{{.Store.GraphRoot}}' 2>/dev/null || true)"
-        [ -n "$PODMAN_ROOT" ] && warn_fs "$PODMAN_ROOT" "podman storage"
+        if [ "$DISKWARN_ENABLE" = "1" ]; then
+          warn_fs /nix/store "the nix store"
+          PODMAN_ROOT="$(podman info --format '{{.Store.GraphRoot}}' 2>/dev/null || true)"
+          [ -n "$PODMAN_ROOT" ] && warn_fs "$PODMAN_ROOT" "podman storage"
+        fi
 
         # This project's build-cache volumes (target / .venv / node_modules).
-        vol_bytes=0
+        # target's size and mountpoint are kept separately for the prune below.
+        vol_bytes=0; target_gib=0; target_mp=""
         for v in target venv node; do
           mp="$(podman volume inspect "agentsb-$v-$IMGKEY" --format '{{.Mountpoint}}' 2>/dev/null || true)"
           [ -n "$mp" ] && [ -d "$mp" ] || continue
           b="$(du -sx -B1 "$mp" 2>/dev/null | awk '{print $1}' || true)"
-          if [ -n "$b" ]; then vol_bytes=$(( vol_bytes + b )); fi
+          if [ -n "$b" ]; then
+            vol_bytes=$(( vol_bytes + b ))
+            if [ "$v" = target ]; then
+              target_gib=$(( b / 1024 / 1024 / 1024 ))
+              target_mp="$mp"
+            fi
+          fi
         done
         vol_gib=$(( vol_bytes / 1024 / 1024 / 1024 ))
-        if [ "$vol_gib" -ge "$DISKWARN_VOLUME_GIB" ]; then
+        if [ "$DISKWARN_ENABLE" = "1" ] && [ "$vol_gib" -ge "$DISKWARN_VOLUME_GIB" ]; then
           echo "agent-sandbox: WARNING: build-cache volumes for this project total ''${vol_gib}GiB (agentsb-*-$IMGKEY)." >&2
           echo "  reset (rebuilds cold next run): podman volume rm agentsb-{target,venv,node}-$IMGKEY" >&2
+        fi
+
+        # Auto-clear the Rust target volume when it alone crosses the prune
+        # threshold. Contents only — the volume stays in place, so there's no
+        # re-create race and the container mounts it as usual next launch.
+        # cargo treats the empty dir as a cold cache and rebuilds everything.
+        if [ "$PRUNE_ENABLE" = "1" ] && [ "$target_gib" -ge "$PRUNE_ABOVE_GIB" ] \
+           && [ -n "$target_mp" ] && [ -d "$target_mp" ]; then
+          echo "agent-sandbox: clearing agentsb-target-$IMGKEY (''${target_gib}GiB >= ''${PRUNE_ABOVE_GIB}GiB); next build is cold" >&2
+          find "$target_mp" -mindepth 1 -xdev -delete 2>/dev/null || true
         fi
 
         printf '%s' "$NOW" > "$CHECK_STAMP"
@@ -703,7 +730,9 @@ in
         shadow volumes (Rust target/, .venv, node_modules — which grow
         unboundedly and no GC touches) exceed a size. The volume size needs a
         `du`, so the check is throttled per (project,agent) to keep warm
-        relaunches instant. Warnings only; nothing is deleted.
+        relaunches instant. Warnings only; nothing is deleted (automatic
+        clearing of the Rust target volume is the separate `prune` option,
+        which shares this check's throttle).
       '';
       type = lib.types.submodule {
         options = {
@@ -736,6 +765,39 @@ in
               Warn when this project's build-cache shadow volumes
               (agentsb-{target,venv,node}-<key>-<agent>) total at least this
               many GiB. Reset them with `podman volume rm` (they rebuild cold).
+            '';
+          };
+        };
+      };
+    };
+
+    prune = lib.mkOption {
+      default = { };
+      description = ''
+        Automatically clear a project's Rust target shadow volume
+        (agentsb-target-<key>-<agent>) when it grows past a threshold. Cargo
+        never garbage-collects target/, so old dependency versions, dead
+        incremental caches, and pre-toolchain-bump artifacts accumulate
+        unboundedly; clearing resets that at the cost of one cold rebuild.
+        Contents are removed but the volume itself is kept. Runs inside the
+        diskWarn check's throttle (same stamp file and checkIntervalHours),
+        but is independent of diskWarn.enable. Only the target volume is
+        pruned — venv and node_modules regrow to a bounded size.
+      '';
+      type = lib.types.submodule {
+        options = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Clear the Rust target volume when it exceeds aboveGiB.";
+          };
+          aboveGiB = lib.mkOption {
+            type = lib.types.ints.unsigned;
+            default = 40;
+            description = ''
+              Clear this project's target volume when it alone reaches this many
+              GiB. Every trigger costs a full cold rebuild next launch, so keep
+              this comfortably above the project's fresh-build target size.
             '';
           };
         };
