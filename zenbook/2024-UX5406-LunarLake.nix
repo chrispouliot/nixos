@@ -1,22 +1,22 @@
-# Edit this configuration file to define what should be installed on
-# your system.  Help is available in the configuration.nix(5) man page
-# and in the NixOS manual (accessible by running ‘nixos-help’).
-
-{ config, pkgs, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
 {
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
-      ./flatpak.nix
+      ./helpers.nix
+      ./agent-sandbox.nix
+      # ./suspend-performance-fix.nix - disable fix until we get logs for bug report, below
+      ./lnl-clamp-logger.nix
     ];
 
   # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # Use latest kernel.
-  boot.kernelPackages = pkgs.linuxPackages_cachyos;
+  # Fix TB4 dock ports/display not working
+  # teo to fix mouse cursor and desktop stutters / latency
+  boot.kernelParams = [ "thunderbolt.clx=0" "cpuidle.governor=teo"];
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
@@ -31,60 +31,70 @@
   # Select internationalisation properties.
   i18n.defaultLocale = "en_CA.UTF-8";
 
+  # Enable zram swap
+  zramSwap.enable = true;
+
   # Set to schedutil and passive so Energy Aware Scheduling works for Intel Lunar Lake
-  powerManagement.cpuFreqGovernor = "schedutil";
-  boot.kernelParams = [ "intel_pstate=passive" ];
-  # Enable TLP and disable Gnome's built-in PPD
-  services.power-profiles-daemon.enable = false;
-  services.tlp = {
-    enable = true;
-    settings = {
-      CPU_DRIVER_OPMODE_ON_AC="passive";
-      CPU_DRIVER_OPMODE_ON_BAT="passive";
+ # powerManagement.cpuFreqGovernor = "schedutil";
+ # boot.kernelParams = [ "intel_pstate=passive" ];
+ # # Enable TLP and disable Gnome's built-in PPD
+ # services.power-profiles-daemon.enable = false;
+ # services.tlp = {
+ #   enable = true;
+ #   settings = {
+ #     CPU_DRIVER_OPMODE_ON_AC="passive";
+ #     CPU_DRIVER_OPMODE_ON_BAT="passive";
 
-      CPU_SCALING_GOVERNOR_ON_AC = "schedutil";
-      CPU_SCALING_GOVERNOR_ON_BAT = "schedutil";
-      #CPU_SCALING_MIN_FREQ_ON_AC=423000;
-      #CPU_SCALING_MAX_FREQ_ON_AC=4000000;
-      #CPU_SCALING_MIN_FREQ_ON_BAT=423000;
-      #CPU_SCALING_MAX_FREQ_ON_BAT=3800000;
-      #CPU_BOOST_ON_AC=0;
-      #CPU_BOOST_ON_BAT=0;
-      CPU_MIN_PERF_ON_AC=40;
-      CPU_MAX_PERF_ON_AC=90;
-      CPU_MIN_PERF_ON_BAT=25;
-      CPU_MAX_PERF_ON_BAT=65;
+ #     CPU_SCALING_GOVERNOR_ON_AC = "schedutil";
+ #     CPU_SCALING_GOVERNOR_ON_BAT = "schedutil";
+ #     #CPU_SCALING_MIN_FREQ_ON_AC=423000;
+ #     #CPU_SCALING_MAX_FREQ_ON_AC=4000000;
+ #     #CPU_SCALING_MIN_FREQ_ON_BAT=423000;
+ #     #CPU_SCALING_MAX_FREQ_ON_BAT=3800000;
+ #     #CPU_BOOST_ON_AC=0;
+ #     #CPU_BOOST_ON_BAT=0;
+ #     CPU_MIN_PERF_ON_AC=40;
+ #     CPU_MAX_PERF_ON_AC=90;
+ #     CPU_MIN_PERF_ON_BAT=25;
+ #     CPU_MAX_PERF_ON_BAT=65;
 
-      #Optional helps save long term battery health
-      #START_CHARGE_THRESH_BAT0 = 40; # 40 and below it starts to charge
-      #STOP_CHARGE_THRESH_BAT0 = 80; # 80 and above it stops charging
+ #     #Optional helps save long term battery health
+ #     #START_CHARGE_THRESH_BAT0 = 40; # 40 and below it starts to charge
+ #     #STOP_CHARGE_THRESH_BAT0 = 80; # 80 and above it stops charging
 
-      };
-  };
-
-  # Enable the X11 windowing system.
-  services.xserver.enable = true;
-  # Swap win and alt keys for my keyboard in windows mode
-  #services.xserver.xkb.options = "['altwin:swap_alt_win']";
+ #     };
+ # };
 
   # Enable the GNOME Desktop Environment.
   services.displayManager.gdm.enable = true;
   services.desktopManager.gnome.enable = true;
 
-    # Gnome experimental features
+  # Gnome experimental features
   programs.dconf.profiles.user.databases = [
     {
       lockAll = true; # prevents overriding
       settings = {
         "org/gnome/mutter" = {
-          experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling"];
-        };
-        "org/gnome/desktop/input-sources" = {
-          xkb-options = [ "altwin:swap_alt_win"];
+          experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling" "variable-refresh-rate"];
+          workspaces-only-on-primary = false;
         };
       };
     }
   ];
+
+  # Gnome enable contacts sync and address book for WebDav
+  services.gnome.evolution-data-server.enable = true;
+  services.gnome.gnome-online-accounts.enable = true;
+
+  services.gnome.gnome-keyring.enable = true;
+  security.pam.services.login.enableGnomeKeyring = true;
+
+  # Clean up older nixos generations, free up space
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 15d";
+  };
 
   # Configure keymap in X11
   services.xserver.xkb = {
@@ -102,9 +112,14 @@
       intel-media-driver # LIBVA_DRIVER_NAME=iHD
       intel-vaapi-driver # LIBVA_DRIVER_NAME=i965 (older but works better for Firefox/Chromium)
       libvdpau-va-gl
+      intel-compute-runtime
+      mesa
     ];
   };
-  environment.sessionVariables = { LIBVA_DRIVER_NAME = "iHD"; }; # Force intel-media-driver
+  environment.sessionVariables = {
+    LIBVA_DRIVER_NAME = "iHD";
+    MESA_DEBUG = "silent";
+  }; # Force intel-media-driver
 
   # Enable sound with pipewire.
   services.pulseaudio.enable = false;
@@ -121,6 +136,20 @@
     # no need to redefine it in your config for now)
     #media-session.enable = true;
   };
+
+  # Dynamic linkers, helps when third party apps download their own libraries
+  programs.nix-ld.enable = true;
+  programs.nix-ld.libraries = with pkgs; [
+    stdenv.cc.cc
+    zlib
+    icu
+    openssl
+    libGL
+    libX11
+    libXi
+    libXrandr
+    alsa-lib
+  ];
 
   # Enable touchpad support (enabled default in most desktopManager).
   # services.xserver.libinput.enable = true;
@@ -143,16 +172,45 @@
         dataDir = "/home/chris/Documents";    # Default folder for new synced folders
         configDir = "/home/chris/.config/syncthing";   # Folder for Syncthing's settings and keys
     };
-  };  
+  };
 
-  # Framework fan control systemd program, needed by fanctl gnome extension
-  hardware.fw-fanctrl.enable = true;
+  # Enable direnv for automatic env loading per directory, especially for nix-shell envs
+  programs.direnv = {
+    enable = true;
+    settings = {
+      global = {
+        log_format = "-";
+        log_filter = "^$";
+        hide_env_diff = true;
+      };
+    };
+  };
+
+  # NixOS Flake-based llm agent sandboxes
+  programs.agentSandbox = {
+    enable = true;
+    defaultAgent = "opencode";
+    extraTools = ["jq"];
+    diskWarn = {
+      enable = true;
+      checkIntervalHours = 6;
+      minFreeGiB = 80; # Nix store size, including host
+      volumeWarnGiB = 30; # Podman volumes (per project combines)
+    };
+  };
+
+  # Proton Bridge
+  services.protonmail-bridge = {
+    enable = true;
+    path = with pkgs; [ pass gnupg ];
+  };
+  security.pki.certificateFiles = [ ./protonmail-bridge-cert.pem ]; # The Bridge SSL Cert
+
+  # Enable linux-firmware incase that helps with compatability on laptop
+  hardware.enableRedistributableFirmware = true;
 
   # Configure Firefox PWA
   programs.firefox.nativeMessagingHosts.packages = [ pkgs.firefoxpwa ];
-
-  # Flatpak and Flathub
-  services.flatpak.enable = true;
 
   # Install firefox.
   programs.firefox.enable = true;
@@ -160,8 +218,8 @@
   # Enable tailscale
   services.tailscale.enable = true;
 
-  # Enable steam
-  programs.steam.enable = true;
+  # Locally made OpenBubbles GTK app
+  programs.bubbles.enable = true;
 
   # Firmware updates
   services.fwupd.enable = true;
@@ -169,19 +227,50 @@
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
 
+  # Declare wanted flatpaks
+  services.flatpak = {
+    enable = true;
+    uninstallUnmanaged = false;
+    update.auto = { enable = true; onCalendar = "weekly"; };
+
+    packages = [
+      "org.onlyoffice.desktopeditors"
+      "com.github.tchx84.Flatseal"
+      "dev.qwery.AddWater"
+      "us.zoom.Zoom"
+      "com.jeffser.Nocturne"
+      "io.m51.Gelly"
+      "de.schmidhuberj.tubefeeder"
+      "page.codeberg.libre_menu_editor.LibreMenuEditor"
+      "com.moonlight_stream.Moonlight"
+      "io.github.alainm23.planify"
+      "io.github.tanaybhomia.Whisp"
+      "dev.nicx.mimick"
+    ];
+  };
+
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
-  #  vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
-  #  wget
-    vim wget git helix starship
+    # Local apps / extensions
+    (pkgs.callPackage ./pkgs/touchpad-speed-control.nix { src = inputs.touchpad-speed-control; })
+    (pkgs.callPackage ./pkgs/notif-icon-colour.nix { }) # Local gnome extension, src in file directly
+    (pkgs.callPackage ./pkgs/medialine.nix { src = inputs.medialine; })
+
+    # Gnome specific
     gnomeExtensions.appindicator
+    # gnomeExtensions.medialine # Not available in nixpkgs yet, manual install
+    gnomeExtensions.steal-my-focus-window
     gnome-tweaks
+    glycin-loaders # Temporary fix for gnome-contacts not coming with it (avatar loading)
+
+    vim wget git helix starship
+    vesktop
+    ghostty
+    menulibre
     linux-firmware
     firefoxpwa
     mission-center
-    spotify
-    spotify-player
     sbctl
     lm_sensors
     chromium
