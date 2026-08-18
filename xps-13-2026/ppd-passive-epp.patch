@@ -1,0 +1,94 @@
+--- a/src/ppd-driver-intel-pstate.c	2026-08-01 17:06:41.416724729 +0000
++++ b/src/ppd-driver-intel-pstate.c	2026-08-01 17:07:15.809513320 +0000
+@@ -198,16 +198,18 @@
+   g_autofree char *pstate_status_path = NULL;
+   g_autofree char *status = NULL;
+   const char *dirname;
++  gboolean active_mode;
+ 
+-  /* Verify that Intel P-State is running in active mode */
++  /* EPP is writable in both active and passive mode (with HWP) since
++   * kernel 5.9. In passive mode the scaling governor (e.g. schedutil,
++   * required for EAS) must be left alone. */
+   pstate_status_path = ppd_utils_get_sysfs_path (PSTATE_STATUS_PATH);
+   if (!g_file_get_contents (pstate_status_path, &status, NULL, NULL))
+     return PPD_PROBE_RESULT_FAIL;
+   status = g_strchomp (status);
+-  if (g_strcmp0 (status, "active") != 0) {
+-    g_debug ("Intel P-State is running in passive mode");
+-    return PPD_PROBE_RESULT_FAIL;
+-  }
++  active_mode = g_strcmp0 (status, "active") == 0;
++  if (!active_mode)
++    g_debug ("Intel P-State is running in passive mode, keeping scaling governor");
+ 
+   policy_dir = ppd_utils_get_sysfs_path (CPUFREQ_POLICY_DIR);
+   dir = g_dir_open (policy_dir, 0, NULL);
+@@ -228,14 +230,17 @@
+     if (!g_file_test (path, G_FILE_TEST_EXISTS))
+       continue;
+ 
+-    /* Force a scaling_governor where the preference can be written */
+-    gov_path = g_build_filename (policy_dir,
+-                                 dirname,
+-                                 "scaling_governor",
+-                                 NULL);
+-    if (!ppd_utils_write (gov_path, DEFAULT_CPU_FREQ_SCALING_GOV, &error)) {
+-      g_warning ("Could not change scaling governor %s to '%s'", dirname, DEFAULT_CPU_FREQ_SCALING_GOV);
+-      continue;
++    /* In active mode, force a scaling_governor where the preference can
++     * be written; in passive mode any governor may accompany EPP. */
++    if (active_mode) {
++      gov_path = g_build_filename (policy_dir,
++                                   dirname,
++                                   "scaling_governor",
++                                   NULL);
++      if (!ppd_utils_write (gov_path, DEFAULT_CPU_FREQ_SCALING_GOV, &error)) {
++        g_warning ("Could not change scaling governor %s to '%s'", dirname, DEFAULT_CPU_FREQ_SCALING_GOV);
++        continue;
++      }
+     }
+ 
+     if (!pstate->epp_devices)
+--- a/tests/integration_test.py	2026-08-01 18:16:42.465723639 +0000
++++ b/tests/integration_test.py	2026-08-01 18:17:06.583172902 +0000
+@@ -857,7 +857,7 @@
+         self.assert_file_eventually_contains(energy_prefs, "balance_performance\n")
+ 
+     def test_intel_pstate_passive(self):
+-        """Intel P-State in passive mode -> placeholder"""
++        """Intel P-State in passive mode -> EPP managed, governor untouched"""
+ 
+         dir1 = os.path.join(
+             self.testbed.get_root_dir(), "sys/devices/system/cpu/cpufreq/policy0/"
+@@ -880,20 +880,23 @@
+         self.start_daemon()
+ 
+         profiles = self.get_dbus_property("Profiles")
+-        self.assertEqual(len(profiles), 2)
+-        self.assertEqual(profiles[0]["Driver"], "placeholder")
+-        self.assertEqual(profiles[0]["PlatformDriver"], "placeholder")
++        self.assertEqual(len(profiles), 3)
++        self.assertEqual(profiles[0]["CpuDriver"], "intel_pstate")
+         self.assertEqual(self.get_dbus_property("ActiveProfile"), "balanced")
+ 
+         energy_prefs = os.path.join(dir1, "energy_performance_preference")
+-        self.assert_file_eventually_contains(energy_prefs, "performance\n")
++        self.assert_file_eventually_contains(energy_prefs, "balance_performance")
+ 
+-        # Set performance mode
++        # Governor must not be forced to powersave in passive mode (EAS)
++        governor = os.path.join(dir1, "scaling_governor")
++        self.assert_file_eventually_contains(governor, "powersave\n")
++
++        # Set power-saver mode
+         self.set_dbus_property("ActiveProfile", GLib.Variant.new_string("power-saver"))
+         self.assertEqual(self.get_dbus_property("ActiveProfile"), "power-saver")
+ 
+-        energy_prefs = os.path.join(dir1, "energy_performance_preference")
+-        self.assert_file_eventually_contains(energy_prefs, "performance\n")
++        self.assert_file_eventually_contains(energy_prefs, "power")
++        self.assert_file_eventually_contains(governor, "powersave\n")
+ 
+     def test_intel_pstate_passive_with_epb(self):
+         """Intel P-State in passive mode (no HWP) with energy_perf_bias"""

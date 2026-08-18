@@ -1,0 +1,294 @@
+{ config, pkgs, lib, inputs, ... }:
+
+{
+  imports =
+    [ # Include the results of the hardware scan.
+      ./hardware-configuration.nix
+      # ./intel-eas.nix disabled for now
+      ./helpers.nix
+      ./agent-sandbox.nix
+    ];
+
+  # Bootloader.
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
+
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+  networking.hostName = "nixos"; # Define your hostname.
+
+  # Enable networking
+  networking.networkmanager.enable = true;
+
+  # Set your time zone.
+  time.timeZone = "America/Vancouver";
+
+  # Select internationalisation properties.
+  i18n.defaultLocale = "en_CA.UTF-8";
+
+  # Disable zram swap
+  zramSwap.enable = false;
+  
+  # 16 GiB SSD-backed swapfile
+  swapDevices = [
+    {
+      device = "/swapfile";
+      size = 16384; # MiB
+      priority = 10;
+    }
+  ];
+  
+  # Use zswap as a compressed RAM cache in front of the SSD swap
+  boot.kernelParams = [
+    "zswap.enabled=1"
+    "zswap.max_pool_percent=20"
+    "zswap.shrinker_enabled=1"
+  ];
+
+  # Enable the GNOME Desktop Environment.
+  services.displayManager.gdm.enable = true;
+  services.desktopManager.gnome.enable = true;
+
+  # Gnome experimental features
+  programs.dconf.profiles.user.databases = [
+    {
+      lockAll = true; # prevents overriding
+      settings = {
+        "org/gnome/mutter" = {
+          experimental-features = ["scale-monitor-framebuffer" "xwayland-native-scaling" "variable-refresh-rate"];
+          workspaces-only-on-primary = false;
+        };
+      };
+    }
+  ];
+
+  # Gnome enable contacts sync and address book for WebDav
+  services.gnome.evolution-data-server.enable = true;
+  services.gnome.gnome-online-accounts.enable = true;
+
+  services.gnome.gnome-keyring.enable = true;
+  security.pam.services.login.enableGnomeKeyring = true;
+
+  # Clean up older nixos generations, free up space
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 15d";
+  };
+
+  # Configure keymap in X11
+  services.xserver.xkb = {
+    layout = "us";
+    variant = "";
+  };
+
+  # Enable CUPS to print documents.
+  services.printing.enable = true;
+
+
+  hardware.graphics = {
+    enable = true;
+    extraPackages = with pkgs; [
+      intel-media-driver # LIBVA_DRIVER_NAME=iHD
+      intel-vaapi-driver # LIBVA_DRIVER_NAME=i965 (older but works better for Firefox/Chromium)
+      libvdpau-va-gl
+      intel-compute-runtime
+      mesa
+    ];
+  };
+  environment.sessionVariables = {
+    LIBVA_DRIVER_NAME = "iHD";
+    MESA_DEBUG = "silent";
+  }; # Force intel-media-driver
+
+  # Enable sound with pipewire.
+  services.pulseaudio.enable = false;
+  security.rtkit.enable = true;
+  services.pipewire = {
+    enable = true;
+    alsa.enable = true;
+    alsa.support32Bit = true;
+    pulse.enable = true;
+    # If you want to use JACK applications, uncomment this
+    #jack.enable = true;
+
+    # use the example session manager (no others are packaged yet so this is enabled by default,
+    # no need to redefine it in your config for now)
+    #media-session.enable = true;
+  };
+
+  # Dynamic linkers, helps when third party apps download their own libraries
+  programs.nix-ld.enable = true;
+  programs.nix-ld.libraries = with pkgs; [
+    stdenv.cc.cc
+    zlib
+    icu
+    openssl
+    libGL
+    libX11
+    libXi
+    libXrandr
+    alsa-lib
+  ];
+
+  # Enable touchpad support (enabled default in most desktopManager).
+  # services.xserver.libinput.enable = true;
+
+  # Define a user account. Don't forget to set a password with ‘passwd’.
+  users.users.chris = {
+    isNormalUser = true;
+    description = "chris";
+    extraGroups = [ "networkmanager" "wheel" ];
+    packages = with pkgs; [
+    #  thunderbird
+    ];
+  };
+
+  services = {
+    syncthing = {
+        enable = true;
+        group = "users";
+        user = "chris";
+        dataDir = "/home/chris/Documents";    # Default folder for new synced folders
+        configDir = "/home/chris/.config/syncthing";   # Folder for Syncthing's settings and keys
+    };
+  };
+
+  # Enable direnv for automatic env loading per directory, especially for nix-shell envs
+  programs.direnv = {
+    enable = true;
+    settings = {
+      global = {
+        log_format = "-";
+        log_filter = "^$";
+        hide_env_diff = true;
+      };
+    };
+  };
+
+  # NixOS Flake-based llm agent sandboxes
+  programs.agentSandbox = {
+    enable = true;
+    defaultAgent = "opencode";
+    extraTools = ["jq"];
+    diskWarn = {
+      enable = true;
+      checkIntervalHours = 6;
+      minFreeGiB = 80; # Nix store size, including host
+      volumeWarnGiB = 30; # Podman volumes (per project combines)
+    };
+  };
+
+  # Proton Bridge
+  services.protonmail-bridge = {
+    enable = true;
+    path = with pkgs; [ pass gnupg ];
+  };
+  security.pki.certificateFiles = [ ./protonmail-bridge-cert.pem ]; # The Bridge SSL Cert
+
+  # Enable linux-firmware incase that helps with compatability on laptop
+  hardware.enableRedistributableFirmware = true;
+
+  # Configure Firefox PWA
+  programs.firefox.nativeMessagingHosts.packages = [ pkgs.firefoxpwa ];
+
+  # Install firefox.
+  programs.firefox.enable = true;
+
+  # Enable tailscale
+  services.tailscale.enable = true;
+
+  # Locally made OpenBubbles GTK app
+  programs.bubbles.enable = true;
+
+  # Firmware updates
+  services.fwupd.enable = true;
+
+  # Gamescope
+  programs.gamescope.enable = true;
+
+  # Allow unfree packages
+  nixpkgs.config.allowUnfree = true;
+
+  # Declare wanted flatpaks
+  services.flatpak = {
+    enable = true;
+    uninstallUnmanaged = false;
+    update.auto = { enable = true; onCalendar = "weekly"; };
+
+    packages = [
+      "org.onlyoffice.desktopeditors"
+      "com.github.tchx84.Flatseal"
+      "dev.qwery.AddWater"
+      "us.zoom.Zoom"
+      "com.jeffser.Nocturne"
+      "io.m51.Gelly"
+      "de.schmidhuberj.tubefeeder"
+      "page.codeberg.libre_menu_editor.LibreMenuEditor"
+      "com.moonlight_stream.Moonlight"
+      "io.github.alainm23.planify"
+      "io.github.tanaybhomia.Whisp"
+      "dev.nicx.mimick"
+      "org.zotero.Zotero"
+    ];
+  };
+
+  # List packages installed in system profile. To search, run:
+  # $ nix search wget
+  environment.systemPackages = with pkgs; [
+    # Local apps / extensions
+    (pkgs.callPackage ./pkgs/touchpad-speed-control.nix { src = inputs.touchpad-speed-control; })
+    (pkgs.callPackage ./pkgs/notif-icon-colour.nix { }) # Local gnome extension, src in file directly
+    (pkgs.callPackage ./pkgs/medialine.nix { src = inputs.medialine; })
+
+    # Gnome specific
+    gnomeExtensions.appindicator
+    # gnomeExtensions.medialine # Not available in nixpkgs yet, manual install
+    gnomeExtensions.steal-my-focus-window
+    gnome-tweaks
+    glycin-loaders # Temporary fix for gnome-contacts not coming with it (avatar loading)
+
+    vim wget git helix starship
+    obsidian
+    vesktop
+    ghostty
+    menulibre
+    linux-firmware
+    firefoxpwa
+    mission-center
+    sbctl
+    gnupg pass
+    lm_sensors
+    prismlauncher
+    brave-origin
+    chromium
+  ];
+
+  # Some programs need SUID wrappers, can be configured further or are
+  # started in user sessions.
+  # programs.mtr.enable = true;
+  # programs.gnupg.agent = {
+  #   enable = true;
+  #   enableSSHSupport = true;
+  # };
+
+  # List services that you want to enable:
+
+  # Enable the OpenSSH daemon.
+  # services.openssh.enable = true;
+
+  # Open ports in the firewall.
+  # networking.firewall.allowedTCPPorts = [ ... ];
+  # networking.firewall.allowedUDPPorts = [ ... ];
+  # Or disable the firewall altogether.
+  # networking.firewall.enable = false;
+
+  # This value determines the NixOS release from which the default
+  # settings for stateful data, like file locations and database versions
+  # on your system were taken. It‘s perfectly fine and recommended to leave
+  # this value at the release version of the first install of this system.
+  # Before changing this value read the documentation for this option
+  # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
+  system.stateVersion = "25.05"; # Did you read the comment?
+
+}
