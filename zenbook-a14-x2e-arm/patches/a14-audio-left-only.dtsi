@@ -1,0 +1,34 @@
+/*
+ * Diagnostic A14 audio configuration.
+ *
+ * Keep only the left-side WSA SoundWire path in the sound card:
+ *
+ *   swr0 / WSA
+ *     - left woofer
+ *     - left tweeter
+ *
+ * Exclude:
+ *
+ *   swr3 / WSA2
+ *     - right woofer
+ *     - right tweeter
+ *
+ * This is intentionally diagnostic, not a permanent board description.
+ */
+
+&{/sound} {
+	audio-routing =
+		"WooferLeft IN", "WSA WSA_SPK1 OUT",
+		"TweeterLeft IN", "WSA WSA_SPK2 OUT",
+		"VA DMIC0", "vdd-micb",
+		"VA DMIC1", "vdd-micb",
+		"VA DMIC2", "vdd-micb",
+		"VA DMIC3", "vdd-micb";
+
+	wsa-dai-link {
+		codec {
+			sound-dai = <&left_woofer>, <&left_tweeter>,
+				    <&swr0 0>, <&lpass_wsamacro 0>;
+		};
+	};
+};

@@ -1,0 +1,327 @@
+{ lib, pkgs, ... }:
+
+let
+  libvpxLib = lib.getLib pkgs.libvpx;
+
+  nativeLibPath = lib.makeLibraryPath [
+    pkgs.dbus-glib
+    pkgs.libvpx
+  ];
+
+  # ------------------------------------------------------------
+  # Native ARM64 Steam bootstrap / launcher
+  # ------------------------------------------------------------
+
+  steamArm64Launcher = pkgs.writeShellApplication {
+    name = "steam-arm64-launcher";
+
+    runtimeInputs = with pkgs; [
+      curl
+      unzip
+      gnutar
+      xz
+      binutils
+      gnugrep
+      coreutils
+      findutils
+    ];
+
+    text = ''
+      STEAM="$HOME/.local/share/Steam"
+      STEAM_DOT="$HOME/.steam"
+
+      RUNTIME_DIR="$STEAM/steam-runtime-steamrt-arm64"
+      CLIENT_DIR="$STEAM/steamrtarm64"
+
+      RUNTIME_TAR_URL="https://repo.steampowered.com/steamrt3c/images/latest-public-beta/steam-runtime-steamrt-arm64.tar.xz"
+      STEAM_MANIFEST_URL="https://client-update.fastly.steamstatic.com/steam_client_publicbeta_linuxarm64"
+      STEAM_CDN="https://client-update.steamstatic.com"
+
+      log() {
+        printf '[steam-arm64] %s\n' "$*"
+      }
+
+      die() {
+        printf '[steam-arm64] ERROR: %s\n' "$*" >&2
+        exit 1
+      }
+
+      mkdir -p "$STEAM"
+
+      install_runtime() {
+        if [ -d "$RUNTIME_DIR" ]; then
+          log "ARM64 Steam runtime already installed."
+          return
+        fi
+
+        log "Downloading Valve ARM64 Steam runtime..."
+
+        runtime_tar="$STEAM/steam-runtime-steamrt-arm64.tar.xz"
+
+        curl \
+          -fL \
+          --retry 5 \
+          -o "$runtime_tar" \
+          "$RUNTIME_TAR_URL" \
+          || die "Failed to download ARM64 Steam runtime."
+
+        log "Extracting ARM64 Steam runtime..."
+
+        tar -xJf "$runtime_tar" -C "$STEAM" \
+          || die "Failed to extract ARM64 Steam runtime."
+
+        rm -f "$runtime_tar"
+      }
+
+      link_runtime_library() {
+        pattern="$1"
+        soname="$2"
+
+        target="$(
+          find "$RUNTIME_DIR" \
+            -name "$pattern" \
+            -print \
+            | head -n 1
+        )"
+
+        if [ -z "$target" ] || [ ! -e "$target" ]; then
+          die "Could not locate $pattern inside ARM64 Steam runtime."
+        fi
+
+        mkdir -p "$STEAM/lib/aarch64-linux-gnu"
+
+        ln -sfn \
+          "$target" \
+          "$STEAM/lib/aarch64-linux-gnu/$soname"
+      }
+
+      setup_runtime_libraries() {
+        log "Setting up ARM64 compatibility libraries..."
+
+        link_runtime_library \
+          'libibus-1.0.so.5.*' \
+          'libibus-1.0.so.5'
+
+        link_runtime_library \
+          'libgtk-x11-2.0.so.0.*' \
+          'libgtk-x11-2.0.so.0'
+
+        link_runtime_library \
+          'libgdk-x11-2.0.so.0.*' \
+          'libgdk-x11-2.0.so.0'
+
+        #
+        # Experimental ARM64 Steam currently requests libvpx.so.6.
+        #
+        vpx_target="$(
+          find ${libvpxLib}/lib \
+            -maxdepth 1 \
+            -name 'libvpx.so.*' \
+            -print \
+            | sort -V \
+            | head -n 1
+        )"
+
+        if [ -z "$vpx_target" ] || [ ! -e "$vpx_target" ]; then
+          die "Could not locate NixOS ARM64 libvpx."
+        fi
+
+        ln -sfn \
+          "$vpx_target" \
+          "$STEAM/lib/aarch64-linux-gnu/libvpx.so.6"
+      }
+
+      install_client() {
+        if [ -x "$CLIENT_DIR/steam" ]; then
+          log "ARM64 Steam client already installed."
+          return
+        fi
+
+        log "Finding latest Valve ARM64 public-beta client..."
+
+        target_file="$(
+          curl -fsSL "$STEAM_MANIFEST_URL" \
+            | strings \
+            | grep -oP \
+                'bins_linuxarm64_linuxarm64\.zip\.(?!vz\.)[^"]+' \
+            | head -n 1
+        )"
+
+        if [ -z "$target_file" ]; then
+          die "Could not find ARM64 Steam client in Valve manifest."
+        fi
+
+        client_zip="$STEAM/linuxarm64.zip"
+
+        log "Downloading ARM64 Steam client..."
+
+        curl \
+          -fL \
+          --retry 5 \
+          -o "$client_zip" \
+          "$STEAM_CDN/$target_file" \
+          || die "Failed to download ARM64 Steam client."
+
+        log "Extracting ARM64 Steam client..."
+
+        unzip -o "$client_zip" -d "$STEAM" \
+          || die "Failed to extract ARM64 Steam client."
+
+        rm -f "$client_zip"
+
+        chmod -R u+rwX "$CLIENT_DIR"
+        chmod +x "$CLIENT_DIR/steam"
+
+        mkdir -p "$STEAM/package"
+        printf '%s\n' publicbeta > "$STEAM/package/beta"
+      }
+
+      setup_steam_layout() {
+        mkdir -p "$STEAM_DOT"
+        mkdir -p "$STEAM/compatibilitytools.d"
+      
+        ln -sfnT "$STEAM" "$STEAM_DOT/steam"
+        ln -sfnT "$STEAM" "$STEAM_DOT/root"
+      
+        ln -sfnT "$STEAM/linuxarm64" "$STEAM_DOT/sdkarm64"
+        ln -sfnT "$STEAM/linux64" "$STEAM_DOT/sdk64"
+      }
+
+      install_runtime
+      install_client
+      setup_runtime_libraries
+      setup_steam_layout
+
+      export LD_LIBRARY_PATH="$STEAM/lib/aarch64-linux-gnu:${nativeLibPath}:''${LD_LIBRARY_PATH:-}"
+
+      log "Starting experimental native ARM64 Steam client..."
+
+      while true; do
+        set +e
+
+        "$CLIENT_DIR/steam" "$@"
+        result=$?
+
+        set -e
+
+        if [ "$result" -eq 42 ]; then
+          log "Steam requested restart."
+          continue
+        fi
+
+        exit "$result"
+      done
+    '';
+  };
+
+  # ------------------------------------------------------------
+  # Steam FHS environment
+  # ------------------------------------------------------------
+  #
+  # Valve binaries assume a conventional Linux filesystem including
+  # /lib/ld-linux-aarch64.so.1, /usr/lib, etc.
+  #
+  # NixOS intentionally does not provide those paths on the host.
+  #
+
+  steamArm64 = pkgs.buildFHSEnv {
+    name = "steam";
+
+    targetPkgs = pkgs: with pkgs; [
+      bash
+      coreutils
+      file
+      findutils
+      gnugrep
+      gnused
+      gawk
+
+      glibc
+      nss
+      nspr
+      gcc.cc.lib
+      cups
+      expat
+
+      dbus
+      dbus-glib
+      glib
+
+      gdk-pixbuf
+      gtk2
+      pango
+      cairo
+      fontconfig
+      at-spi2-core
+
+      libgbm
+      libdrm
+      libvpx
+
+      libx11
+      libxext
+      libxfixes
+      libxi
+      libxrandr
+      libxrender
+      libxcb
+      libxkbcommon
+      libXtst
+      libXinerama
+      libXcursor
+      libXcomposite
+      libXdamage
+
+      libglvnd
+      mesa
+
+      wayland
+
+      alsa-lib
+      pulseaudio
+      pipewire
+
+      pciutils
+      usbutils
+
+      xdg-utils
+      zenity
+
+      freetype
+      openal
+      SDL2
+      libsm
+      libice
+      
+      libssh2
+      curl
+      openssl
+      zlib
+    ];
+
+    # Keep the host graphics-driver paths visible in the environment.
+    profile = ''
+      export LIBGL_DRIVERS_PATH=/run/opengl-driver/lib/dri:''${LIBGL_DRIVERS_PATH:-}
+      export LIBVA_DRIVERS_PATH=/run/opengl-driver/lib/dri:''${LIBVA_DRIVERS_PATH:-}
+
+      export __EGL_VENDOR_LIBRARY_DIRS=/run/opengl-driver/share/glvnd/egl_vendor.d:''${__EGL_VENDOR_LIBRARY_DIRS:-}
+
+      export XDG_DATA_DIRS=/usr/share:''${XDG_DATA_DIRS:-}
+    '';
+
+    runScript =
+      "${steamArm64Launcher}/bin/steam-arm64-launcher";
+
+    extraBwrapArgs = [
+      "--bind-try"
+      "/tmp/dumps"
+      "/tmp/dumps"
+    ];
+  };
+
+in
+{
+  environment.systemPackages = [
+    steamArm64
+  ];
+}

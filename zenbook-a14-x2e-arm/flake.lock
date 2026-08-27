@@ -1,0 +1,416 @@
+{
+  "nodes": {
+    "box64-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787826694,
+        "narHash": "sha256-UulKp8BwyX9h1dnz0qURbn5nbzXYI+SAgzYD6KQzzYo=",
+        "owner": "ptitSeb",
+        "repo": "box64",
+        "rev": "aab716ff6e0b63bb5218fbecd2f16bbf0515b78e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ptitSeb",
+        "repo": "box64",
+        "type": "github"
+      }
+    },
+    "bubbles": {
+      "inputs": {
+        "fenix": "fenix",
+        "flake-utils": "flake-utils",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786826605,
+        "narHash": "sha256-S8JCOJAyalD5Tf8ervBkIhqNZONrmA4vDQC1FYFCQC0=",
+        "owner": "chrispouliot",
+        "repo": "Bubbles",
+        "rev": "a140fd0b26fcc5e32f006f08453f5bfcbcc1f267",
+        "type": "github"
+      },
+      "original": {
+        "owner": "chrispouliot",
+        "repo": "Bubbles",
+        "type": "github"
+      }
+    },
+    "calendar": {
+      "inputs": {
+        "fenix": "fenix_2",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786819926,
+        "narHash": "sha256-jCzxdlifOc0i8UeXfESj+eY9CDYUEO1ZK4Q4HrioxLM=",
+        "owner": "chrispouliot",
+        "repo": "calendar",
+        "rev": "a923ceb8cbafe9f39b7ef241ad9e319da06965b8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "chrispouliot",
+        "repo": "calendar",
+        "type": "github"
+      }
+    },
+    "fenix": {
+      "inputs": {
+        "nixpkgs": [
+          "bubbles",
+          "nixpkgs"
+        ],
+        "rust-analyzer-src": "rust-analyzer-src"
+      },
+      "locked": {
+        "lastModified": 1781430890,
+        "narHash": "sha256-Dict8ZPqm3fei8iFXh75sPBNPqCdn7a8GJytgLajbGw=",
+        "owner": "nix-community",
+        "repo": "fenix",
+        "rev": "1b9586dd32bb28519cf6eea855e2df5b4d5eca15",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "fenix",
+        "type": "github"
+      }
+    },
+    "fenix_2": {
+      "inputs": {
+        "nixpkgs": [
+          "calendar",
+          "nixpkgs"
+        ],
+        "rust-analyzer-src": "rust-analyzer-src_2"
+      },
+      "locked": {
+        "lastModified": 1784539434,
+        "narHash": "sha256-TitoB4AUyAEACEfMnIFPxFrkvEMqseulDvNHvfOyu7I=",
+        "owner": "nix-community",
+        "repo": "fenix",
+        "rev": "ef671b6baee7d1c55a93ee555d5f5ca2f0e6aaa0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "fenix",
+        "type": "github"
+      }
+    },
+    "flake-utils": {
+      "inputs": {
+        "systems": "systems"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "flake-utils_2": {
+      "inputs": {
+        "systems": "systems_2"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "glymur-kernel": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785520824,
+        "narHash": "sha256-tP8SJ96siyJV1jeefwgAURK6qGeJZAj9hvbjqMTWq68=",
+        "owner": "linux-msm",
+        "repo": "laptops-kernel",
+        "rev": "51231839d5ef007638bd1c3500e6a76b337a66f3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "linux-msm",
+        "repo": "laptops-kernel",
+        "rev": "51231839d5ef007638bd1c3500e6a76b337a66f3",
+        "type": "github"
+      }
+    },
+    "hytale-launcher": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1787083398,
+        "narHash": "sha256-ey29CH7VCwJoq3QFzXqnTwVmNC+8f1rWY0F1TPjauLw=",
+        "owner": "JPyke3",
+        "repo": "hytale-launcher-nix",
+        "rev": "726e21f2b80d52e1e95ae12dc8f6a31c63f233a9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "JPyke3",
+        "repo": "hytale-launcher-nix",
+        "type": "github"
+      }
+    },
+    "linux-firmware-qcc2072": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786555866,
+        "narHash": "sha256-/XeMJF6f7T6sgaB6pxw1ZEEYi52AZ6VZuO6lsthgy/Y=",
+        "ref": "refs/heads/main",
+        "rev": "25c06030aa434817928ace452c06f095f14729d3",
+        "revCount": 6437,
+        "type": "git",
+        "url": "https://gitlab.com/kernel-firmware/linux-firmware.git"
+      },
+      "original": {
+        "rev": "25c06030aa434817928ace452c06f095f14729d3",
+        "type": "git",
+        "url": "https://gitlab.com/kernel-firmware/linux-firmware.git"
+      }
+    },
+    "medialine": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1784124553,
+        "narHash": "sha256-T44hNdlDYt7tWyOg4lwM3vgzcSylGnwbMKyYOsbMUhY=",
+        "owner": "funinkina",
+        "repo": "medialine",
+        "rev": "9ddd1c8256ff1940c109dc10cc96889c35b8c712",
+        "type": "github"
+      },
+      "original": {
+        "owner": "funinkina",
+        "repo": "medialine",
+        "type": "github"
+      }
+    },
+    "nix-flatpak": {
+      "locked": {
+        "lastModified": 1767983141,
+        "narHash": "sha256-7ZCulYUD9RmJIDULTRkGLSW1faMpDlPKcbWJLYHoXcs=",
+        "owner": "gmodena",
+        "repo": "nix-flatpak",
+        "rev": "440818969ac2cbd77bfe025e884d0aa528991374",
+        "type": "github"
+      },
+      "original": {
+        "owner": "gmodena",
+        "ref": "latest",
+        "repo": "nix-flatpak",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1787001381,
+        "narHash": "sha256-Ue1Yo8gfHdD4TMtNewhA4tkSYeFqXThju0nCyJc3ALo=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "ec2d622de0773551768cf98f3fc50cbcc003b9c5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs-fex": {
+      "locked": {
+        "lastModified": 1787778977,
+        "narHash": "sha256-W+5OXxThmLhSv/MaA33rTJ+eGBaSuw9rxe/HxBiEssI=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "3909cd7790aa03b6c20b64bb2f2017deefe6bf92",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "master",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1787498568,
+        "narHash": "sha256-9i/VTdusq/+NM/tz+J1Re+ojkMB8MBf0QshnYfzHz30=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "box64-src": "box64-src",
+        "bubbles": "bubbles",
+        "calendar": "calendar",
+        "glymur-kernel": "glymur-kernel",
+        "hytale-launcher": "hytale-launcher",
+        "linux-firmware-qcc2072": "linux-firmware-qcc2072",
+        "medialine": "medialine",
+        "nix-flatpak": "nix-flatpak",
+        "nixpkgs": "nixpkgs_2",
+        "nixpkgs-fex": "nixpkgs-fex",
+        "touchpad-speed-control": "touchpad-speed-control",
+        "vireo": "vireo",
+        "wsf": "wsf"
+      }
+    },
+    "rust-analyzer-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1781382341,
+        "narHash": "sha256-1AuqkRHiBSuU8AjzPW4gFgwyPhFaMZhYJVtMormLvb8=",
+        "owner": "rust-lang",
+        "repo": "rust-analyzer",
+        "rev": "5017a50153285a2d9bfa286e6fa96723e997d5b6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "rust-lang",
+        "ref": "nightly",
+        "repo": "rust-analyzer",
+        "type": "github"
+      }
+    },
+    "rust-analyzer-src_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1784363916,
+        "narHash": "sha256-ugQVFz4RGj12q8jhISxd07VcKS1hhd2Gz2Gn0z4V7tA=",
+        "owner": "rust-lang",
+        "repo": "rust-analyzer",
+        "rev": "cac0779549328e4bd4b808000c03307f1721f869",
+        "type": "github"
+      },
+      "original": {
+        "owner": "rust-lang",
+        "ref": "nightly",
+        "repo": "rust-analyzer",
+        "type": "github"
+      }
+    },
+    "systems": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "systems_2": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "touchpad-speed-control": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1782483785,
+        "narHash": "sha256-y/w/sESsknkpFiIgkmqC6MKe6GSXqCzzWtlI+bi6Zfs=",
+        "owner": "ritesh-777",
+        "repo": "touchpad-speed-control",
+        "rev": "1e612ec4093b42127a454723cfe5cdf1a4f45c1d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ritesh-777",
+        "repo": "touchpad-speed-control",
+        "type": "github"
+      }
+    },
+    "vireo": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1787422716,
+        "narHash": "sha256-lyH5w/q1/dpw2KacGrXDu5cxYlw90Vt1ldp1fqy3ylY=",
+        "ref": "nix-flake",
+        "rev": "6c178969caecb4f198bc605611f08ec8921f4375",
+        "revCount": 171,
+        "type": "git",
+        "url": "file:///home/chris/Projects/vireo"
+      },
+      "original": {
+        "ref": "nix-flake",
+        "type": "git",
+        "url": "file:///home/chris/Projects/vireo"
+      }
+    },
+    "wsf": {
+      "inputs": {
+        "flake-utils": "flake-utils_2",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1785503173,
+        "narHash": "sha256-pcg14+74JJeujIh158JgMRQgzKrw2X3dr2ACWDZ7oUM=",
+        "owner": "daniel-g-carrasco",
+        "repo": "wayland-scroll-factor",
+        "rev": "ac1743216a47166d2ac9f936d1adbd61e04f6aa3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "daniel-g-carrasco",
+        "repo": "wayland-scroll-factor",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

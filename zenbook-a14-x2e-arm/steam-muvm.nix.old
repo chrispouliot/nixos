@@ -1,0 +1,201 @@
+{ inputs, lib, pkgs, ... }:
+
+let
+  # Reuse the master nixpkgs input we already added for current FEX.
+  masterPkgs =
+    inputs.nixpkgs-fex.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+
+  muvm = masterPkgs.muvm;
+
+  # Native ARM64 libraries required by Steam + steamwebhelper/CEF.
+  steamLibs = with pkgs; [
+    glibc
+    gcc.cc.lib
+
+    dbus
+    dbus-glib
+    glib
+
+    gtk2
+    gdk-pixbuf
+    pango
+    cairo
+    fontconfig
+    freetype
+    at-spi2-core
+
+    nss
+    nspr
+    cups
+    expat
+
+    libdrm
+    libgbm
+    libglvnd
+    mesa
+    wayland
+
+    SDL2
+    openal
+
+    alsa-lib
+    pulseaudio
+    pipewire
+
+    libvpx
+
+    curl
+    libssh2
+    openssl
+    zlib
+
+    libx11
+    libxext
+    libxfixes
+    libxi
+    libxrandr
+    libxrender
+    libxcb
+    libxkbcommon
+
+    xorg.libXtst
+    xorg.libXinerama
+    xorg.libXcursor
+    xorg.libXcomposite
+    xorg.libXdamage
+
+    libsm
+    libice
+  ];
+
+  steamLibPath = lib.makeLibraryPath steamLibs;
+
+  # Generic Linux ARM64 binaries expect this loader path.
+  # NixOS normally puts stub-ld there, so replace it only inside
+  # the muvm guest's mount namespace.
+  steamMuvmInit = pkgs.writeShellApplication {
+  name = "steam-muvm-init";
+
+  runtimeInputs = with pkgs; [
+    coreutils
+    util-linux
+    dbus
+  ];
+
+  text = ''
+    set -eu
+
+    # Generic Linux ARM64 loader.
+    mount --bind \
+      ${pkgs.glibc}/lib/ld-linux-aarch64.so.1 \
+      /lib/ld-linux-aarch64.so.1
+
+    # System D-Bus.
+    mkdir -p /run/dbus
+    rm -f /run/dbus/system_bus_socket /run/dbus/pid
+
+    ${pkgs.dbus}/bin/dbus-daemon \
+      --system \
+      --fork \
+      --nopidfile
+  '';
+};
+ steamMuvmGuest = pkgs.writeShellApplication {
+  name = "steam-muvm-guest";
+
+  runtimeInputs = with pkgs; [
+    coreutils
+    dbus
+  ];
+
+  text = ''
+    set -eu
+
+
+uid="$(id -u)"
+export XDG_RUNTIME_DIR="/run/user/$uid"
+
+    # Discard the unusable host session-bus address.
+    unset DBUS_SESSION_BUS_ADDRESS
+
+    # Start a fresh session D-Bus and run Steam inside it.
+    exec ${pkgs.dbus}/bin/dbus-run-session -- \
+      "$HOME/.local/share/Steam/steamrtarm64/steam" \
+      -noverifyfiles \
+      "$@"
+  '';
+};
+
+  steamMuvm = pkgs.writeShellApplication {
+    name = "steam-muvm";
+
+    runtimeInputs = with pkgs; [
+      coreutils
+      findutils
+      muvm
+    ];
+
+    text = ''
+      set -eu
+
+      steam_root="$HOME/.local/share/Steam"
+      client="$steam_root/steamrtarm64"
+
+      if [ ! -x "$client/steam" ]; then
+        echo "Steam ARM64 client not found at:"
+        echo "  $client/steam"
+        exit 1
+      fi
+
+      # Pick the native Freedreno/Turnip Vulkan ICD from NixOS.
+      vk_icd="$(
+        find /run/opengl-driver/share/vulkan/icd.d \
+          -maxdepth 1 \
+          -type f \
+          \( -iname '*freedreno*.json' -o -iname '*turnip*.json' \) \
+          -print -quit \
+          2>/dev/null || true
+      )"
+
+      muvm_args=(
+        --execute-pre ${steamMuvmInit}/bin/steam-muvm-init
+        --interactive
+
+        --env="LD_LIBRARY_PATH=$steam_root/lib/aarch64-linux-gnu:$client:${steamLibPath}"
+        --env="LIBGL_DRIVERS_PATH=/run/opengl-driver/lib/dri"
+        --env="LIBVA_DRIVERS_PATH=/run/opengl-driver/lib/dri"
+        --env="__EGL_VENDOR_LIBRARY_DIRS=/run/opengl-driver/share/glvnd/egl_vendor.d"
+        --env="XDG_DATA_DIRS=/run/current-system/sw/share:/usr/local/share:/usr/share"
+
+        --env="PULSE_SERVER=unix:/run/user/$(id -u)/pulse/native"
+        --env="SDL_AUDIODRIVER=pulseaudio"
+      )
+
+      if [ -n "$vk_icd" ]; then
+        echo "Using Vulkan ICD: $vk_icd"
+        muvm_args+=(--env="VK_DRIVER_FILES=$vk_icd")
+      fi
+
+      echo "Launching native ARM64 Steam inside muvm..."
+
+exec ${muvm}/bin/muvm \
+  "''${muvm_args[@]}" \
+  -- \
+  ${steamMuvmGuest}/bin/steam-muvm-guest \
+  "$@"
+    '';
+  };
+
+in
+{
+  environment.systemPackages = [
+    muvm
+    steamMuvm
+  ];
+
+  users.groups.kvm = { };
+
+  users.users.chris.extraGroups = [
+    "kvm"
+  ];
+}
