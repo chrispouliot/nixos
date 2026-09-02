@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "audioreach-topology": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1781530064,
+        "narHash": "sha256-z6fz7S/dwiGUEQ4z5kArsoGSAEZFcgHYkllBRuRgfXg=",
+        "owner": "linux-msm",
+        "repo": "audioreach-topology",
+        "rev": "d7a5e9d80ad18a7a6844eeb32cacbdeea0e7e677",
+        "type": "github"
+      },
+      "original": {
+        "owner": "linux-msm",
+        "repo": "audioreach-topology",
+        "type": "github"
+      }
+    },
     "box64-src": {
       "flake": false,
       "locked": {
@@ -57,6 +73,25 @@
         "owner": "chrispouliot",
         "repo": "calendar",
         "type": "github"
+      }
+    },
+    "decibels-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1783826237,
+        "narHash": "sha256-OOv+VCmt6zxM5fXQ1tfCreVKvm1POefMw0lavOI+ZSo=",
+        "ref": "wip/resume-state",
+        "rev": "9a2cecc92162c10d533a7bd69e7f1f1985fe0660",
+        "revCount": 649,
+        "submodules": true,
+        "type": "git",
+        "url": "file:///home/chris/Projects/decibels"
+      },
+      "original": {
+        "ref": "wip/resume-state",
+        "submodules": true,
+        "type": "git",
+        "url": "file:///home/chris/Projects/decibels"
       }
     },
     "fenix": {
@@ -241,11 +276,11 @@
     },
     "nixpkgs-fex": {
       "locked": {
-        "lastModified": 1787778977,
-        "narHash": "sha256-W+5OXxThmLhSv/MaA33rTJ+eGBaSuw9rxe/HxBiEssI=",
+        "lastModified": 1788306637,
+        "narHash": "sha256-ZSyTS1h7glcWLQEO6tBnau7Y4qQLTAncDOzVKih7iqI=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "3909cd7790aa03b6c20b64bb2f2017deefe6bf92",
+        "rev": "35d246df1f4a9c69be48cce484e8c50dc1d1c716",
         "type": "github"
       },
       "original": {
@@ -273,9 +308,11 @@
     },
     "root": {
       "inputs": {
+        "audioreach-topology": "audioreach-topology",
         "box64-src": "box64-src",
         "bubbles": "bubbles",
         "calendar": "calendar",
+        "decibels-src": "decibels-src",
         "glymur-kernel": "glymur-kernel",
         "hytale-launcher": "hytale-launcher",
         "linux-firmware-qcc2072": "linux-firmware-qcc2072",
@@ -375,11 +412,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787422716,
-        "narHash": "sha256-lyH5w/q1/dpw2KacGrXDu5cxYlw90Vt1ldp1fqy3ylY=",
+        "lastModified": 1788233343,
+        "narHash": "sha256-bfCJs4aKVScNW+mBZ8UHgfticVxJ6ZwjpNEKrLL8ZKY=",
         "ref": "nix-flake",
-        "rev": "6c178969caecb4f198bc605611f08ec8921f4375",
-        "revCount": 171,
+        "rev": "2630ed33c34eb8e95e2fb99f1590beb3ecb49ab9",
+        "revCount": 567,
         "type": "git",
         "url": "file:///home/chris/Projects/vireo"
       },

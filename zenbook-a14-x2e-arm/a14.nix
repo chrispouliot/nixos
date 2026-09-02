@@ -24,16 +24,39 @@ let
   # ASUS UX3407NA AudioReach topology
   # ------------------------------------------------------------
 
-  # The machine driver requests a board-specific topology filename,
-  # while linux-firmware currently provides only the generic Glymur
-  # CRD topology. Install the stock Glymur topology under the filename
-  # expected by this machine.
+  # Keep the proven four-channel MultiMedia1 speaker frontend intact,
+  # then add a separate stereo MultiMedia5 frontend and
+  # DISPLAY_PORT_RX_2 backend for the built-in HDMI connector.
   #
-  # MultiMedia1 intentionally remains a 4-channel frontend. The kernel
-  # constrains the actual WSA backend to the two physical speakers.
-  a14AudioTopology = pkgs.runCommand "a14-audio-topology" { } ''
+  # The upstream macro library is pinned through flake.lock. The
+  # board-specific root topology is kept as a normal source file so
+  # M4 quoting is not altered by Nix string escaping.
+  a14AudioTopology = pkgs.runCommand "a14-audio-topology-hdmi" {
+    nativeBuildInputs = [
+      pkgs.buildPackages.alsa-utils
+      pkgs.buildPackages.gnum4
+    ];
+  } ''
+    cp -a ${inputs.audioreach-topology} source
+    chmod -R u+w source
+
+    install -m644 \
+      ${./patches/a14-hdmi-topology.m4} \
+      source/GLYMUR-CRD.m4
+
+    (
+      cd source
+
+      m4 -I . GLYMUR-CRD.m4 \
+        > GLYMUR-ASUS-Zenbook-A14-UX3407NA.conf
+
+      alsatplg \
+        -c GLYMUR-ASUS-Zenbook-A14-UX3407NA.conf \
+        -o GLYMUR-ASUS-Zenbook-A14-UX3407NA-tplg.bin
+    )
+
     install -Dm644 \
-      ${pkgs.linux-firmware}/lib/firmware/qcom/glymur/GLYMUR-CRD-tplg.bin \
+      source/GLYMUR-ASUS-Zenbook-A14-UX3407NA-tplg.bin \
       $out/lib/firmware/qcom/glymur/GLYMUR-ASUS-Zenbook-A14-UX3407NA-tplg.bin
   '';
 
@@ -42,17 +65,18 @@ let
   # ASUS UX3407NA two-speaker UCM
   # ------------------------------------------------------------
 
-  # The current generic Glymur UCM assumes four WSA8845 speaker
-  # devices split across WSA/swr0 and WSA2/swr3.
+  # Keep the always-available internal Speaker and Mic devices in UCM.
   #
-  # The UX3407NA actually has two attached WSA8845 devices, both on
-  # swr0. The two devices described on swr3 are unattached/nonexistent.
+  # Do NOT put HDMI in this HiFi verb. Qualcomm DP audio PCM hw:0,4
+  # legitimately returns -EINVAL while no display is connected. ACP probes
+  # every PCM in a UCM profile, so including HDMI here causes WirePlumber to
+  # reject the entire HiFi profile whenever HDMI is unplugged, taking the
+  # internal speakers and microphones down with it.
   #
-  # Until the upstream Glymur/ASUS UCM is corrected, derive an A14
-  # profile from the generic one and remove the nonexistent WSA2 side.
+  # HDMI is exposed separately at runtime by a14HdmiAudioHotplug below.
   a14Ucm = pkgs.runCommand "a14-ucm-two-speaker" {
     nativeBuildInputs = [
-      pkgs.gnused
+      pkgs.buildPackages.gnused
     ];
   } ''
     mkdir -p $out/share/alsa
@@ -105,7 +129,6 @@ let
       -e '/Wsa2SpeakerDisableSeq/d' \
       $out/share/alsa/ucm2/Qualcomm/glymur/HiFi.conf
 
-
     # The generic four-speaker card initialization also configures the
     # WSA2 macro. Remove those commands for this machine.
     sed -i \
@@ -122,6 +145,15 @@ let
       'PlaybackChannels 4' \
       $out/share/alsa/ucm2/Qualcomm/glymur/HiFi.conf
 
+    # HDMI must not be part of the always-on UCM HiFi profile.
+    if grep -qE \
+      'HDMI2|DISPLAY_PORT_RX_2|DP2 Jack|CardId},4' \
+      $out/share/alsa/ucm2/Qualcomm/glymur/HiFi.conf
+    then
+      echo "ERROR: HDMI leaked into the always-on A14 UCM HiFi profile"
+      exit 1
+    fi
+
     if grep -RqiE \
       'WooferRight|TweeterRight|Wsa2Speaker' \
       $out/share/alsa/ucm2/Qualcomm/glymur \
@@ -131,8 +163,139 @@ let
       exit 1
     fi
 
-    echo "ASUS A14 two-speaker UCM prepared successfully"
+    echo "ASUS A14 always-on Speaker + Mic UCM prepared successfully"
   '';
+
+
+  # ------------------------------------------------------------
+  # ASUS UX3407NA HDMI hotplug bridge
+  # ------------------------------------------------------------
+
+  # The kernel/topology exposes HDMI as MultiMedia5 (hw:0,4), with
+  # connection state reported by the read-only "DP2 Jack" ALSA control.
+  # hw:0,4 cannot be prepared while HDMI is disconnected, so keep it out of
+  # ACP/UCM probing and instantiate it only while the jack is actually on.
+  #
+  # PipeWire 1.6's PulseAudio compatibility layer provides a built-in
+  # module-alsa-sink. The helper below loads that module on HDMI connect and
+  # unloads it on disconnect. It retries once per second while the jack is on,
+  # which also covers the small interval where the display link is detected
+  # before its audio engine is ready.
+  a14HdmiAudioHotplug = pkgs.writeShellApplication {
+    name = "a14-hdmi-audio-hotplug";
+
+    runtimeInputs = [
+      pkgs.alsa-utils
+      pkgs.pulseaudio
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.gnused
+    ];
+
+    text = ''
+      sink_name="a14_hdmi"
+
+      module_ids() {
+        pactl list modules short 2>/dev/null | \
+          awk -v sink="$sink_name" '
+            $2 == "module-alsa-sink" && index($0, "sink_name=" sink) {
+              print $1
+            }
+          ' || true
+      }
+
+      sink_loaded() {
+        pactl list sinks short 2>/dev/null | \
+          awk -v sink="$sink_name" '
+            $2 == sink { found = 1 }
+            END { exit !found }
+          '
+      }
+
+      set_hdmi_mixer() {
+        value="$1"
+        amixer -c 0 cset \
+          name='DISPLAY_PORT_RX_2 Audio Mixer MultiMedia5' \
+          "$value" >/dev/null 2>&1 || true
+      }
+
+      unload_hdmi() {
+        while IFS= read -r module_id; do
+          if [ -n "$module_id" ]; then
+            pactl unload-module "$module_id" >/dev/null 2>&1 || true
+          fi
+        done < <(module_ids)
+
+        set_hdmi_mixer 0,0
+      }
+
+      load_hdmi() {
+        if sink_loaded; then
+          return 0
+        fi
+
+        # The AudioReach backend has a two-value mixer switch. Both channels
+        # must be on; a scalar "1" only enabled the first one in testing.
+        set_hdmi_mixer 1,1
+
+        if pactl load-module module-alsa-sink \
+          sink_name="$sink_name" \
+          device=hw:0,4 \
+          format=s16le \
+          rate=48000 \
+          channels=2 \
+          channel_map=front-left,front-right \
+          sink_properties=device.description=HDMI \
+          >/dev/null 2>&1
+        then
+          return 0
+        fi
+
+        set_hdmi_mixer 0,0
+        return 1
+      }
+
+      jack_state() {
+        amixer -c 0 cget iface=CARD,name='DP2 Jack' 2>/dev/null | \
+          sed -n 's/.*: values=\(on\|off\).*/\1/p' | \
+          tail -n 1 || true
+      }
+
+      cleanup() {
+        unload_hdmi
+      }
+
+      trap cleanup EXIT INT TERM
+
+      # pipewire-pulse may be socket activated. Wait until pactl can talk to
+      # it before inspecting or creating modules.
+      until pactl info >/dev/null 2>&1; do
+        sleep 1
+      done
+
+      # Remove any stale instance left by a prior helper/PipeWire restart.
+      unload_hdmi
+
+      last_state=""
+
+      while true; do
+        state="$(jack_state)"
+
+        if [ "$state" = "on" ]; then
+          # Keep retrying while connected in case the DP link/audio engine
+          # needs another moment after the jack notification.
+          load_hdmi || true
+        else
+          if [ "$last_state" = "on" ] || sink_loaded; then
+            unload_hdmi
+          fi
+        fi
+
+        last_state="$state"
+        sleep 1
+      done
+    '';
+  };
 
 
   # ------------------------------------------------------------
@@ -210,8 +373,9 @@ let
 in
 {
   imports = [
+    ./agent-sandbox.nix
     ./fex.nix
-    ./steam.nix
+    ./steam-arm64.nix
     ./hytale.nix
     ./helpers.nix
   ];
@@ -270,34 +434,53 @@ in
   # ASUS UX3407NA audio
   # ------------------------------------------------------------
 
-  # Use the corrected two-speaker UCM tree for programs launched from
-  # the desktop/session as well as diagnostic ALSA utilities.
+  # Use the corrected always-on Speaker + Mic UCM tree for programs launched
+  # from the desktop/session as well as diagnostic ALSA utilities.
   environment.sessionVariables.ALSA_CONFIG_UCM2 =
     "${a14Ucm}/share/alsa/ucm2";
 
-  # WirePlumber owns ALSA device/profile discovery, so this is the
-  # service that actually needs the custom UCM path.
+  # WirePlumber owns ALSA device/profile discovery, so this service also needs
+  # the custom UCM path explicitly.
   systemd.user.services.wireplumber.environment.ALSA_CONFIG_UCM2 =
     "${a14Ucm}/share/alsa/ucm2";
 
 
   # ------------------------------------------------------------
-  # ASUS UX3407NA physical speaker channel mapping
+  # ASUS UX3407NA speaker mapping + transparent 1.50x boost
   # ------------------------------------------------------------
 
-  # The underlying AudioReach PCM is four channels, but the two
-  # physical stereo speakers are carried in PCM slots 0 and 2:
+  # MultiMedia1 is intentionally a four-channel frontend, while the two real
+  # physical speakers occupy slots 0 and 2:
   #
   #   slot 0 -> physical left
   #   slot 1 -> unused
   #   slot 2 -> physical right
   #   slot 3 -> unused
   #
-  # PipeWire otherwise assumes FL,FR,RL,RR and sends stereo Right to
-  # slot 1. Describe the actual Qualcomm channel order so stereo
-  # Left/Right reaches both physical speakers.
+  # Tell PipeWire that layout so ordinary stereo FL/FR lands on slots 0/2.
+  # Apply the 1.50x gain *inside* the real speaker node with WirePlumber's
+  # internal filter graph. This gives desktop applications exactly one visible
+  # internal output named "Speakers"; there is no separate raw/boosted sink.
+  #
+  # Force the A14 card to the UCM HiFi profile. HDMI is no longer part of that
+  # profile, so HiFi remains valid whether a display is connected or not.
   environment.etc."wireplumber/wireplumber.conf.d/90-a14-speakers.conf".text = ''
     monitor.alsa.rules = [
+      {
+        matches = [
+          {
+            device.name = "alsa_card.platform-sound"
+          }
+        ]
+
+        actions = {
+          update-props = {
+            api.alsa.use-acp = true
+            api.alsa.use-ucm = true
+            device.profile = "HiFi"
+          }
+        }
+      }
       {
         matches = [
           {
@@ -309,7 +492,38 @@ in
           update-props = {
             audio.channels = 4
             audio.position = [ FL RL FR RR ]
+            node.description = "Speakers"
+            priority.session = 1400
           }
+        }
+      }
+    ]
+
+    node.filter-graph.rules = [
+      {
+        matches = [
+          {
+            node.name = "alsa_output.platform-sound.HiFi__Speaker__sink"
+          }
+        ]
+
+        actions = {
+          create-filter-graph = [
+            {
+              nodes = [
+                {
+                  type = builtin
+                  name = gain
+                  label = linear
+
+                  control = {
+                    Mult = 1.50
+                    Add = 0.0
+                  }
+                }
+              ]
+            }
+          ]
         }
       }
     ]
@@ -317,90 +531,31 @@ in
 
 
   # ------------------------------------------------------------
-  # ASUS UX3407NA virtual speaker boost
+  # ASUS UX3407NA HDMI audio hotplug
   # ------------------------------------------------------------
 
-  # Create a separate stereo sink for GNOME/applications instead of
-  # inserting a filter directly into the unusual four-channel A14
-  # hardware node.
-  #
-  # The virtual sink's normal 0-100% volume control is applied first,
-  # followed by a fixed 1.50x software gain:
-  #
-  #    desktop   effective old scale
-  #       0%   ->   0%
-  #      50%   ->  75%
-  #      67%   -> ~100%
-  #     100%   -> 150%
-  #
-  # The resulting FL/FR stereo stream is forwarded to the real A14
-  # hardware sink. Its FL/RL/FR/RR mapping above then places:
-  #
-  #   FL -> PCM slot 0 -> physical left speaker
-  #   FR -> PCM slot 2 -> physical right speaker
-  #
-  # Keep the hardware WSA8845 gain limits unchanged; this is purely
-  # software amplification.
-  services.pipewire.extraConfig.pipewire."95-a14-speaker-boost" = {
-    "context.modules" = [
-      {
-        name = "libpipewire-module-filter-chain";
+  # Expose a conventional two-channel PipeWire sink named "HDMI" only while
+  # DP2 Jack is connected. Keeping hw:0,4 out of UCM avoids ACP rejecting the
+  # entire HiFi profile when no TV/receiver is present.
+  systemd.user.services.a14-hdmi-audio-hotplug = {
+    description = "ASUS A14 HDMI audio hotplug";
 
-        args = {
-          "node.description" = "A14 Speaker Boost";
-          "media.name" = "A14 Speaker Boost";
-
-          "filter.graph" = {
-            nodes = [
-              {
-                type = "builtin";
-                name = "gain";
-                label = "linear";
-
-                control = {
-                  Mult = 1.50;
-                  Add = 0.0;
-                };
-              }
-            ];
-          };
-
-          # Virtual stereo sink exposed to GNOME/applications.
-          "capture.props" = {
-            "node.name" = "a14_boosted";
-            "node.description" = "Built-in Audio Speakers";
-            "media.class" = "Audio/Sink";
-
-            "audio.channels" = 2;
-            "audio.position" = [
-              "FL"
-              "FR"
-            ];
-
-            "node.virtual" = true;
-
-            # Prefer this virtual speaker sink to the raw ALSA sink.
-            "priority.session" = 1400;
-          };
-
-          # Processed stream sent to the real A14 speaker node.
-          "playback.props" = {
-            "node.name" = "a14_boosted_output";
-
-            "target.object" =
-              "alsa_output.platform-sound.HiFi__Speaker__sink";
-
-            "audio.channels" = 2;
-            "audio.position" = [
-              "FL"
-              "FR"
-            ];
-
-            "node.passive" = true;
-          };
-        };
-      }
+    wantedBy = [ "default.target" ];
+    wants = [
+      "pipewire-pulse.service"
+      "wireplumber.service"
     ];
+    after = [
+      "pipewire-pulse.service"
+      "wireplumber.service"
+    ];
+
+    serviceConfig = {
+      Type = "simple";
+      ExecStart = "${a14HdmiAudioHotplug}/bin/a14-hdmi-audio-hotplug";
+      Restart = "always";
+      RestartSec = 1;
+    };
   };
 
 
@@ -503,6 +658,7 @@ in
   # ------------------------------------------------------------
 
   networking.networkmanager.enable = true;
+  networking.networkmanager.wifi.powersave = false;
 
 
   # ------------------------------------------------------------
@@ -530,6 +686,13 @@ in
     "console=tty1"
     "consoleblank=0"
 
+    # Temporary MSM DP/eDP link-training diagnostics
+    "drm.debug=0x100"
+
+    # USB Hub / Display suspend fix
+    "pm_async=off"
+    "usbcore.quirks=2109:0817:k"
+
     # Deep suspend currently causes GPU/power-domain problems.
     # s2idle has resumed cleanly without Adreno fault loops.
     "mem_sleep_default=s2idle"
@@ -543,6 +706,11 @@ in
   # ------------------------------------------------------------
   # Services
   # ------------------------------------------------------------
+
+  services.udev.extraRules = ''
+    ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="2109", ATTR{idProduct}=="2817", TEST=="power/control", ATTR{power/control}="on"
+    ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="2109", ATTR{idProduct}=="0817", TEST=="power/control", ATTR{power/control}="on"
+  '';
 
   # Enable Tailscale.
   services.tailscale.enable = true;
@@ -568,6 +736,19 @@ in
     ./protonmail-bridge-cert.pem
   ];
 
+
+  # Locally made agent sandbox
+  programs.agentSandbox = {
+    enable = true;
+    defaultAgent = "opencode";
+    extraTools = ["jq"];
+    diskWarn = {
+      enable = true;
+      checkIntervalHours = 6;
+      minFreeGiB = 80; # Nix store size, including host
+      volumeWarnGiB = 30; # Podman volumes (per project combines)
+    };
+  };
 
   # ------------------------------------------------------------
   # Flatpaks
@@ -622,6 +803,7 @@ in
     gnomeExtensions.steal-my-focus-window
 
     git
+    ripgrep
     vim
 
     pciutils
@@ -636,12 +818,14 @@ in
     vulkan-tools
     kmscube
 
+    alsa-utils
     dtc
 
     firefoxpwa
     mission-center
     menulibre
     prismlauncher
+    ghostty
 
     # Vesktop Electron bug fix: appindicator wouldn't show with
     # Electron 43, so temporarily use Electron 42.

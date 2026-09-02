@@ -10,12 +10,24 @@
       flake = false;
     };
 
+    decibels-src = {
+      url = "git+file:///home/chris/Projects/decibels?ref=wip/resume-state&submodules=1";
+      flake = false;
+    };
+
     hytale-launcher.url = "github:JPyke3/hytale-launcher-nix";
 
     nixpkgs-fex.url = "github:NixOS/nixpkgs/master";
 
     glymur-kernel = {
       url = "github:linux-msm/laptops-kernel/51231839d5ef007638bd1c3500e6a76b337a66f3";
+      flake = false;
+    };
+
+    # Source used to build the board-specific AudioReach topology.
+    # The exact revision is pinned in flake.lock.
+    audioreach-topology = {
+      url = "github:linux-msm/audioreach-topology";
       flake = false;
     };
 
@@ -65,6 +77,7 @@
       self,
       nixpkgs,
       nix-flatpak,
+      decibels-src,
       glymur-kernel,
       bubbles,
       vireo,
@@ -195,7 +208,17 @@
               calendar.packages.${pkgs.stdenv.hostPlatform.system}.default
             ];
           })
-
+          # Decibels with stateful resume
+          {
+            nixpkgs.overlays = [
+              (final: prev: {
+                decibels = prev.decibels.overrideAttrs (old: {
+                  src = decibels-src;
+                  version = "${old.version}-local";
+                });
+              })
+            ];
+          }
           # Declarative Flatpaks
           nix-flatpak.nixosModules.nix-flatpak
 
