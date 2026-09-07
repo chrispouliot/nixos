@@ -5,19 +5,12 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-flatpak.url = "github:gmodena/nix-flatpak/?ref=latest";
     
-    box64-src = {
-      url = "github:ptitSeb/box64";
-      flake = false;
-    };
+    hytale-arm.url = "github:chrispouliot/hytale-launcher-arm-nix";
 
     decibels-src = {
       url = "git+file:///home/chris/Projects/decibels?ref=wip/resume-state&submodules=1";
       flake = false;
     };
-
-    hytale-launcher.url = "github:JPyke3/hytale-launcher-nix";
-
-    nixpkgs-fex.url = "github:NixOS/nixpkgs/master";
 
     glymur-kernel = {
       url = "github:linux-msm/laptops-kernel/51231839d5ef007638bd1c3500e6a76b337a66f3";
@@ -76,6 +69,7 @@
     inputs@{
       self,
       nixpkgs,
+      hytale-arm,
       nix-flatpak,
       decibels-src,
       glymur-kernel,
@@ -191,6 +185,10 @@
             nixpkgs.overlays = [ wsf.overlays.default ];
             programs.wsf.enable = true;
           }
+
+          # Custom fex-patched hytale launcher for arm
+          hytale-arm.nixosModules.default
+          ./hytale.nix
 
           # Locally made Bubbles app (Openbubbles GTK)
           bubbles.nixosModules.default

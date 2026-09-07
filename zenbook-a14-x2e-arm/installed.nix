@@ -17,12 +17,17 @@
   };
 
   boot.loader.efi = {
-    canTouchEfiVariables = true;
+    canTouchEfiVariables = false;
     efiSysMountPoint = "/boot";
   };
 
   # Don't spam kernel messages over the login/desktop console.
   boot.consoleLogLevel = lib.mkForce 3;
+
+  # CPU Boost
+  systemd.tmpfiles.rules = [
+    "w /sys/devices/system/cpu/cpufreq/boost - - - - 1"
+  ];
 
 
   # ------------------------------------------------------------
@@ -51,6 +56,19 @@
     pulse.enable = true;
   };
 
+  nix = {
+    daemonCPUSchedPolicy = "idle";
+    daemonIOSchedClass = "idle";
+
+    settings = {
+      cores = 16; # 16 out of 18
+
+      experimental-features = [
+      "nix-command"
+      "flakes"
+      ];
+    };
+  };
 
   # ------------------------------------------------------------
   # Bluetooth
@@ -85,12 +103,13 @@
   # Administration
   # ------------------------------------------------------------
 
-  services.openssh.enable = true;
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 30d";
+  };
 
-  nix.settings.experimental-features = [
-    "nix-command"
-    "flakes"
-  ];
+  services.openssh.enable = true;
 
   system.stateVersion = "26.11";
 }

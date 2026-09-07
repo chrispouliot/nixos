@@ -3,32 +3,16 @@
     "audioreach-topology": {
       "flake": false,
       "locked": {
-        "lastModified": 1781530064,
-        "narHash": "sha256-z6fz7S/dwiGUEQ4z5kArsoGSAEZFcgHYkllBRuRgfXg=",
+        "lastModified": 1788278954,
+        "narHash": "sha256-3+yp/crVjAZilFZ/tvE6Ab8AJZOxjE0b8XGtH5hOKsQ=",
         "owner": "linux-msm",
         "repo": "audioreach-topology",
-        "rev": "d7a5e9d80ad18a7a6844eeb32cacbdeea0e7e677",
+        "rev": "e7b20b2b16cdda18eb8ae143c8d95c4815c0288e",
         "type": "github"
       },
       "original": {
         "owner": "linux-msm",
         "repo": "audioreach-topology",
-        "type": "github"
-      }
-    },
-    "box64-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1787826694,
-        "narHash": "sha256-UulKp8BwyX9h1dnz0qURbn5nbzXYI+SAgzYD6KQzzYo=",
-        "owner": "ptitSeb",
-        "repo": "box64",
-        "rev": "aab716ff6e0b63bb5218fbecd2f16bbf0515b78e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ptitSeb",
-        "repo": "box64",
         "type": "github"
       }
     },
@@ -41,11 +25,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786826605,
-        "narHash": "sha256-S8JCOJAyalD5Tf8ervBkIhqNZONrmA4vDQC1FYFCQC0=",
+        "lastModified": 1788216271,
+        "narHash": "sha256-J+owE7vmHy4I5wGt05bTc9/qNtcS4v/u1OitaU+P+UY=",
         "owner": "chrispouliot",
         "repo": "Bubbles",
-        "rev": "a140fd0b26fcc5e32f006f08453f5bfcbcc1f267",
+        "rev": "e76de65b76409b9bb696268b321cdc599a5a5e39",
         "type": "github"
       },
       "original": {
@@ -191,21 +175,21 @@
         "type": "github"
       }
     },
-    "hytale-launcher": {
+    "hytale-arm": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs-fex": "nixpkgs-fex"
       },
       "locked": {
-        "lastModified": 1787083398,
-        "narHash": "sha256-ey29CH7VCwJoq3QFzXqnTwVmNC+8f1rWY0F1TPjauLw=",
-        "owner": "JPyke3",
-        "repo": "hytale-launcher-nix",
-        "rev": "726e21f2b80d52e1e95ae12dc8f6a31c63f233a9",
+        "lastModified": 1788397366,
+        "narHash": "sha256-b8m3v+Ecl9ia8oMuUo6ycj/cinjXsuZkbn4Fp+9+0oo=",
+        "owner": "chrispouliot",
+        "repo": "hytale-launcher-arm-nix",
+        "rev": "bce12510a9d091eb430b75ae2dcc479bd45ad24e",
         "type": "github"
       },
       "original": {
-        "owner": "JPyke3",
-        "repo": "hytale-launcher-nix",
+        "owner": "chrispouliot",
+        "repo": "hytale-launcher-arm-nix",
         "type": "github"
       }
     },
@@ -260,11 +244,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1787001381,
-        "narHash": "sha256-Ue1Yo8gfHdD4TMtNewhA4tkSYeFqXThju0nCyJc3ALo=",
+        "lastModified": 1788179007,
+        "narHash": "sha256-hn1oU2rue2SYK8dAr8+WNZWtbsz1S2W5mnHlSEuh3bo=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "ec2d622de0773551768cf98f3fc50cbcc003b9c5",
+        "rev": "34ab99075ac4f7e40cf037eef32cb1c360bb85e9",
         "type": "github"
       },
       "original": {
@@ -276,27 +260,11 @@
     },
     "nixpkgs-fex": {
       "locked": {
-        "lastModified": 1788306637,
-        "narHash": "sha256-ZSyTS1h7glcWLQEO6tBnau7Y4qQLTAncDOzVKih7iqI=",
+        "lastModified": 1788179007,
+        "narHash": "sha256-hn1oU2rue2SYK8dAr8+WNZWtbsz1S2W5mnHlSEuh3bo=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "35d246df1f4a9c69be48cce484e8c50dc1d1c716",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "master",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_2": {
-      "locked": {
-        "lastModified": 1787498568,
-        "narHash": "sha256-9i/VTdusq/+NM/tz+J1Re+ojkMB8MBf0QshnYfzHz30=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "56c02bc00adcf003215cc4bd996d6efaf4cff188",
+        "rev": "34ab99075ac4f7e40cf037eef32cb1c360bb85e9",
         "type": "github"
       },
       "original": {
@@ -309,17 +277,15 @@
     "root": {
       "inputs": {
         "audioreach-topology": "audioreach-topology",
-        "box64-src": "box64-src",
         "bubbles": "bubbles",
         "calendar": "calendar",
         "decibels-src": "decibels-src",
         "glymur-kernel": "glymur-kernel",
-        "hytale-launcher": "hytale-launcher",
+        "hytale-arm": "hytale-arm",
         "linux-firmware-qcc2072": "linux-firmware-qcc2072",
         "medialine": "medialine",
         "nix-flatpak": "nix-flatpak",
-        "nixpkgs": "nixpkgs_2",
-        "nixpkgs-fex": "nixpkgs-fex",
+        "nixpkgs": "nixpkgs",
         "touchpad-speed-control": "touchpad-speed-control",
         "vireo": "vireo",
         "wsf": "wsf"
@@ -434,11 +400,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1785503173,
-        "narHash": "sha256-pcg14+74JJeujIh158JgMRQgzKrw2X3dr2ACWDZ7oUM=",
+        "lastModified": 1787672381,
+        "narHash": "sha256-G3K6dIYKidPU4rADfqF5GYAvTCsHkviG3rDDYC7nv5g=",
         "owner": "daniel-g-carrasco",
         "repo": "wayland-scroll-factor",
-        "rev": "ac1743216a47166d2ac9f936d1adbd61e04f6aa3",
+        "rev": "552370eebdda0efa449205033284f012c7d02b61",
         "type": "github"
       },
       "original": {

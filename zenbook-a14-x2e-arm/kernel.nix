@@ -17,12 +17,26 @@ let
     structuredExtraConfig = with lib.kernel; {
       ARCH_QCOM = yes;
 
+      # Temporary A14 dock/suspend reset diagnostics.
+      # Built-in ramoops starts capturing before userspace runs.
+      PSTORE = lib.mkForce yes;
+      PSTORE_RAM = lib.mkForce yes;
+      PSTORE_CONSOLE = lib.mkForce yes;
+      PSTORE_PMSG = lib.mkForce yes;
+      PSTORE_DEFAULT_KMSG_BYTES = lib.mkForce (freeform "262144");
+      LOG_BUF_SHIFT = lib.mkForce (freeform "20");
+
       # This linux-next snapshot has a Rust/RCU API mismatch.
       RUST = lib.mkForce no;
 
       ARM_SCMI_PROTOCOL = yes;
       ARM_SCMI_TRANSPORT_MAILBOX = yes;
       ARM_SCMI_CPUFREQ = yes;
+
+      # Temporary read-only SCMI query tool support; keep normal drivers active.
+      DEBUG_FS = yes;
+      ARM_SCMI_RAW_MODE_SUPPORT = yes;
+      ARM_SCMI_RAW_MODE_SUPPORT_COEX = yes;
 
       ENERGY_MODEL = yes;
       CPU_FREQ_GOV_SCHEDUTIL = yes;
@@ -33,6 +47,13 @@ let
   };
 
   a14Kernel = baseKernel.overrideAttrs (old: {
+    patches = (old.patches or []) ++ [
+      ./patches/a14-dp-boot-order-debug.patch
+      ./patches/a14-glymur-ucsi-dp-mux-race.patch
+      ./patches/a14-dp-hpd-replay.patch
+      ./patches/a14-scmi-mailbox-set-test.patch
+    ];
+
     postPatch = (old.postPatch or "") + ''
       # ============================================================
       # ASUS A14 USB bring-up DT fixes
@@ -1229,6 +1250,9 @@ PY
         'A14-DP: failed to power on DP PHY' \
         drivers/gpu/drm/msm/dp/dp_ctrl.c
 
+      # Preserve bank0 USB-sensitive controls during matching Glymur DP startup.
+      patch --batch --fuzz=0 -p1 < ${./patches/a14-dp-usb-preserve-bank0.patch}
+
       # ============================================================
       # ASUS A14 USB-C suspend workaround
       #
@@ -1341,6 +1365,427 @@ PY
 
 
       echo
+      # A14 suspend/disconnect experiment: retain HPD-low before the latest
+      # state, with stable worker snapshots and matching AUX-bridge replay.
+      # Runs after the existing patches and postPatch transformations.
+      echo "Applying ASUS A14 retained HPD disconnect test"
+
+      python3 - <<'PY'
+from pathlib import Path
+
+
+def replace_once(text, old, new, description):
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected one {description}, found {count}")
+    return text.replace(old, new, 1)
+
+
+p = Path("drivers/soc/qcom/pmic_glink_altmode.c")
+s = p.read_text()
+s = replace_once(s, "#include <linux/module.h>\n",
+                 "#include <linux/module.h>\n#include <linux/spinlock.h>\n",
+                 "PMIC include anchor")
+
+event_struct = """/* A14: receive-side snapshots; live port fields belong to the worker. */
+struct pmic_glink_altmode_event {
+\tenum typec_orientation orientation;
+\tu16 svid;
+\tstruct usbc_sc8280x_tbt_data tbt_data;
+\tu8 mode;
+\tu8 hpd_state;
+\tu8 hpd_irq;
+\tu8 mux_ctrl;
+};
+
+"""
+s = replace_once(s, "struct pmic_glink_altmode_port {\n",
+                 event_struct + "struct pmic_glink_altmode_port {\n",
+                 "PMIC event type anchor")
+s = replace_once(s, "\tstruct work_struct work;\n", """\tstruct work_struct work;
+
+\t/* Protect only receive-side state; never hold across hardware calls. */
+\tspinlock_t event_lock;
+\tstruct pmic_glink_altmode_event pending_event;
+\tstruct pmic_glink_altmode_event disconnect_event;
+\tbool event_pending;
+\tbool disconnect_pending;
+""", "PMIC port work member")
+
+helpers = r"""/*
+ * A14: coalesce to the latest state, but retain a DP disconnect first.
+ * In particular, low/high while system_freezable_wq is frozen must not
+ * become only high. Storage is bounded and needs no atomic allocation.
+ */
+static void pmic_glink_altmode_queue_event(struct pmic_glink_altmode_port *port,
+\t\t\t\t const struct pmic_glink_altmode_event *event)
+{
+\tunsigned long flags;
+
+\tspin_lock_irqsave(&port->event_lock, flags);
+\tif (event->svid == USB_TYPEC_DP_SID && !event->hpd_state) {
+\t\tport->disconnect_event = *event;
+\t\tport->disconnect_pending = true;
+\t\t/* This newer low supersedes any undelivered high. */
+\t\tport->event_pending = false;
+\t} else {
+\t\tport->pending_event = *event;
+\t\tport->event_pending = true;
+\t}
+\tspin_unlock_irqrestore(&port->event_lock, flags);
+
+\tif (!queue_work(system_freezable_wq, &port->work))
+\t\tdev_info(port->altmode->dev,
+\t\t\t "A14-DP: coalesced work port=%u; event retained\n",
+\t\t\t port->index);
+}
+
+static bool pmic_glink_altmode_take_event(struct pmic_glink_altmode_port *port,
+\t\t\t\t\tstruct pmic_glink_altmode_event *event)
+{
+\tunsigned long flags;
+\tbool found = true;
+
+\tspin_lock_irqsave(&port->event_lock, flags);
+\tif (port->disconnect_pending) {
+\t\t*event = port->disconnect_event;
+\t\tport->disconnect_pending = false;
+\t} else if (port->event_pending) {
+\t\t*event = port->pending_event;
+\t\tport->event_pending = false;
+\t} else {
+\t\tfound = false;
+\t}
+\tspin_unlock_irqrestore(&port->event_lock, flags);
+
+\treturn found;
+}
+
+""".replace(r"\t", "\t")
+s = replace_once(s, "static int pmic_glink_altmode_request(",
+                 helpers + "static int pmic_glink_altmode_request(",
+                 "PMIC event helper anchor")
+
+s = replace_once(s, """static void pmic_glink_altmode_worker(struct work_struct *work)
+{
+\tstruct pmic_glink_altmode_port *alt_port = work_to_altmode_port(work);
+""", """static void pmic_glink_altmode_handle_event(struct pmic_glink_altmode_port *alt_port)
+{
+""", "PMIC worker refactor")
+
+worker = r"""static void pmic_glink_altmode_worker(struct work_struct *work)
+{
+\tstruct pmic_glink_altmode_port *port = work_to_altmode_port(work);
+\tstruct pmic_glink_altmode_event event;
+\tunsigned int budget;
+
+\t/* Bound each invocation even if notifications arrive continuously. */
+\tfor (budget = 0; budget < 8; budget++) {
+\t\tif (!pmic_glink_altmode_take_event(port, &event))
+\t\t\treturn;
+
+\t\tport->orientation = event.orientation;
+\t\tport->svid = event.svid;
+\t\tport->tbt_data = event.tbt_data;
+\t\tport->mode = event.mode;
+\t\tport->hpd_state = event.hpd_state;
+\t\tport->hpd_irq = event.hpd_irq;
+\t\tport->mux_ctrl = event.mux_ctrl;
+
+\t\tif (event.svid == USB_TYPEC_DP_SID && !event.hpd_state)
+\t\t\tdev_info(port->altmode->dev,
+\t\t\t\t "A14-DP: dispatching retained HPD-low port=%u\n",
+\t\t\t\t port->index);
+
+\t\t/* The existing mux, retimer, DRM notification and ACK path. */
+\t\tpmic_glink_altmode_handle_event(port);
+\t}
+
+\t/* Same workqueue preserves per-port worker serialization. */
+\tqueue_work(system_freezable_wq, &port->work);
+}
+
+""".replace(r"\t", "\t")
+s = replace_once(s, "static enum typec_orientation pmic_glink_altmode_orientation(",
+                 worker + "static enum typec_orientation pmic_glink_altmode_orientation(",
+                 "PMIC snapshot worker anchor")
+
+queue_old = r"""\tif (!queue_work(system_freezable_wq, &alt_port->work))
+\t\tdev_info(altmode->dev,
+\t\t\t "A14-DP: queue_work returned false port=%u\n",
+\t\t\t alt_port->index);
+""".replace(r"\t", "\t")
+
+# Both wire formats now build a local event instead of mutating worker state.
+for name, end in [
+    ("pmic_glink_altmode_sc8180xp_notify", "#define SC8280XP_DPAM_MASK"),
+    ("pmic_glink_altmode_sc8280xp_notify", "static void pmic_glink_altmode_callback"),
+]:
+    start = s.index("static void " + name + "(")
+    stop = s.index(end, start)
+    part = s[start:stop]
+    part = replace_once(part, "\tstruct pmic_glink_altmode_port *alt_port;\n",
+                        "\tstruct pmic_glink_altmode_port *alt_port;\n"
+                        "\tstruct pmic_glink_altmode_event event = {};\n",
+                        name + " local event")
+    part = replace_once(part, queue_old,
+                        "\tpmic_glink_altmode_queue_event(alt_port, &event);\n",
+                        name + " queue call")
+    for field in ["orientation", "svid", "mode", "hpd_state", "hpd_irq", "mux_ctrl", "tbt_data"]:
+        part = part.replace("alt_port->" + field, "event." + field)
+    s = s[:start] + part + s[stop:]
+
+s = replace_once(s, "\t\tINIT_WORK(&alt_port->work, pmic_glink_altmode_worker);\n",
+                 "\t\tspin_lock_init(&alt_port->event_lock);\n"
+                 "\t\tINIT_WORK(&alt_port->work, pmic_glink_altmode_worker);\n",
+                 "PMIC event lock initialization")
+p.write_text(s)
+
+# The existing boot-time HPD replay patch is still applied. Extend its
+# cache to retain low before high while DRM has HPD notifications disabled.
+p = Path("drivers/gpu/drm/bridge/aux-hpd-bridge.c")
+s = p.read_text()
+s = replace_once(s, "\tbool status_valid;\n",
+                 "\tbool status_valid;\n\tbool disconnect_pending;\n",
+                 "AUX HPD disconnect latch")
+s = replace_once(s, "/* Protects status, status_valid and hpd_enabled. */",
+                 "/* Protects cached status, disconnect_pending and hpd_enabled. */",
+                 "AUX HPD lock comment")
+
+flush = r"""/* Caller holds status_lock, serializing live and cached notifications. */
+static void drm_aux_hpd_bridge_notify_retained(struct drm_aux_hpd_bridge_data *data,
+\t\t\t\t\t     enum drm_connector_status status)
+{
+\tif (data->disconnect_pending && status != connector_status_disconnected) {
+\t\tdev_info(data->dev, "A14-DP: replaying retained AUX HPD disconnect\n");
+\t\tdrm_bridge_hpd_notify(&data->bridge, connector_status_disconnected);
+\t}
+\tdata->disconnect_pending = false;
+\tdrm_bridge_hpd_notify(&data->bridge, status);
+}
+
+""".replace(r"\t", "\t")
+
+# Replace the two pre-existing delivery sites before inserting the helper.
+old = "\tdrm_bridge_hpd_notify(&data->bridge, status);\n"
+if s.count(old) != 2:
+    raise SystemExit("Expected two existing AUX HPD delivery sites")
+s = s.replace(old, "\tdrm_aux_hpd_bridge_notify_retained(data, status);\n")
+s = replace_once(s, "static void drm_aux_hpd_bridge_replay_work(",
+                 flush + "static void drm_aux_hpd_bridge_replay_work(",
+                 "AUX HPD retained notification helper")
+s = replace_once(s, """\tif (!data->hpd_enabled) {
+\t\tdata->status = status;
+""", """\tif (!data->hpd_enabled) {
+\t\tif (status == connector_status_disconnected)
+\t\t\tdata->disconnect_pending = true;
+\t\tdata->status = status;
+""", "AUX HPD disabled notification cache")
+s = replace_once(s, "/* A live event supersedes any replay that has not started yet. */",
+                 "/* A live event replaces cached status, but must retain a cached low. */",
+                 "AUX HPD live notification comment")
+p.write_text(s)
+
+PY
+
+      # Temporary A14 detach test: preserve the shared PHY configuration
+      # for SAFE notifications, letting consumer exits perform teardown.
+      # The successful HPD retention and prior USB/PHY patches remain active.
+      echo "Applying ASUS A14 SAFE detach reinitialization test"
+
+      python3 - <<'PY'
+from pathlib import Path
+
+
+def replace_once(text, old, new, description):
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected one {description}, found {count}")
+    return text.replace(old, new, 1)
+
+
+p = Path("drivers/phy/qualcomm/phy-qcom-qmp-combo.c")
+s = p.read_text()
+
+parameter = r"""/*
+ * Temporary Glymur detach experiment. Do not interpret a SAFE notification
+ * as a request to restart USB on a disappearing partner. USB/DP consumers
+ * still own their normal power-off/exit operations. This is not a general
+ * implementation of electrical Type-C safe mode.
+ */
+static bool a14_defer_safe_reinit = true;
+module_param(a14_defer_safe_reinit, bool, 0644);
+MODULE_PARM_DESC(a14_defer_safe_reinit,
+\t"A14 test: defer SAFE mux reinitialization to consumer teardown");
+
+""".replace(r"\t", "\t")
+
+s = replace_once(s, "static int qmp_combo_typec_mux_set(",
+                 parameter + "static int qmp_combo_typec_mux_set(",
+                 "QMP test parameter insertion")
+
+old = """\tguard(mutex)(&qmp->phy_mutex);
+
+\tif (state->alt)
+"""
+new = r"""\tguard(mutex)(&qmp->phy_mutex);
+
+\t/*
+\t * A14 experiment: PMIC GLINK sends SAFE before DRM HPD-low on
+\t * physical detach. The normal !DP-SVID path below maps SAFE to
+\t * USB3_ONLY and can force a shared COM reset/restart while DP
+\t * teardown is still pending. Leave both cached mode and hardware
+\t * unchanged here; normal consumer exits release their references.
+\t * Real USB/DP mode requests continue through the existing path.
+\t */
+\tif (READ_ONCE(a14_defer_safe_reinit) &&
+\t    cfg == &glymur_usb3dpphy_cfg &&
+\t    !state->alt && state->mode == TYPEC_STATE_SAFE) {
+\t\tdev_info(qmp->dev,
+\t\t\t "A14-DP: SAFE detach deferred init=%d usb_init=%u dp_init=%u powered=%u qmp_mode=%u\n",
+\t\t\t qmp->init_count, qmp->usb_init_count, qmp->dp_init_count,
+\t\t\t qmp->dp_powered_on, qmp->qmpphy_mode);
+\t\treturn 0;
+\t}
+
+\tif (state->alt)
+""".replace(r"\t", "\t")
+s = replace_once(s, old, new, "QMP SAFE request guard")
+
+# Software state only: avoid adding register reads during power teardown.
+for function, label in [("qmp_combo_dp_exit", "DP"), ("qmp_combo_usb_exit", "USB")]:
+    start = s.index("static int " + function + "(")
+    stop = s.index("\nstatic ", start + 1)
+    part = s[start:stop]
+    for anchor, phase in [("\tmutex_lock(&qmp->phy_mutex);\n", "enter"),
+                          ("\tmutex_unlock(&qmp->phy_mutex);\n", "done")]:
+        trace = (
+            '\tif (qmp->cfg == &glymur_usb3dpphy_cfg)\n'
+            '\t\tdev_info(qmp->dev,\n'
+            f'\t\t\t "A14-DP: {label} exit {phase} init=%d usb_init=%u dp_init=%u powered=%u qmp_mode=%u\\n",\n'
+            '\t\t\t qmp->init_count, qmp->usb_init_count, qmp->dp_init_count,\n'
+            '\t\t\t qmp->dp_powered_on, qmp->qmpphy_mode);\n'
+        )
+        replacement = anchor + trace if phase == "enter" else trace + anchor
+        part = replace_once(part, anchor, replacement, function + " " + phase + " trace")
+    s = s[:start] + part + s[stop:]
+
+p.write_text(s)
+
+PY
+
+      # A14 diagnostic: validate a live external sink before main-link setup.
+      # KMS PM complete can restore a saved mode before freezable HPD work runs.
+      # Keep this separate from the existing HPD and SAFE-detach experiments.
+      python3 - <<'PY'
+from pathlib import Path
+
+
+def once(text, old, new, label):
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected one {label}, found {count}")
+    return text.replace(old, new, 1)
+
+
+p = Path("drivers/gpu/drm/msm/dp/dp_display.c")
+s = p.read_text()
+s = once(s, "#define HPD_STRING_SIZE 30", """/* Diagnostic: validate the external sink before programming the main link. */
+static bool a14_check_sink_before_link = true;
+module_param(a14_check_sink_before_link, bool, 0644);
+MODULE_PARM_DESC(a14_check_sink_before_link,
+                "A14 test: require a live AUX sink before external DP link enable");
+
+#define HPD_STRING_SIZE 30""", "sink-check module parameter")
+s = once(s, "\tbool audio_supported;", """\tbool audio_supported;
+
+\t/* An AUX preflight failure already released the enable PM reference. */
+\tbool a14_enable_aborted;""", "aborted-enable state")
+
+helper = r"""/*
+ * Called with the controller resumed and the AUX PHY initialized, before
+ * msm_dp_ctrl_on_link() powers/configures the main-link PHY and clocks.
+ * A retained HPD disconnect may still be on a frozen GLINK workqueue when
+ * KMS restores its saved state. Cached plugged/sink_count cannot prove that
+ * the dock is still present here. This is a diagnostic, not HPD replacement.
+ */
+static int msm_dp_a14_check_sink(struct msm_dp_display_private *priv)
+{
+\tstruct msm_dp *dp = &priv->msm_dp_display;
+\tu8 revision = 0;
+\tint ret;
+
+\tdev_info(&dp->pdev->dev,
+\t\t "A14-DP: sink check begin plugged=%u sinks=%u core=%u phy=%u\n",
+\t\t priv->plugged, priv->link->sink_count,
+\t\t priv->core_initialized, priv->phy_initialized);
+
+\t/* Do not override AUX transfer gating installed by HPD disconnect. */
+\tret = drm_dp_dpcd_readb(priv->aux, DP_DPCD_REV, &revision);
+\tdev_info(&dp->pdev->dev,
+\t\t "A14-DP: sink check result ret=%d revision=%#x\n",
+\t\t ret, revision);
+\tif (ret != 1)
+\t\treturn ret < 0 ? ret : -EIO;
+\tif (!revision || revision == 0xff)
+\t\treturn -EIO;
+
+\treturn 0;
+}
+
+""".replace(r"\t", "\t")
+s = once(s, "void msm_dp_bridge_atomic_enable(",
+         helper + "void msm_dp_bridge_atomic_enable(", "sink-check helper")
+
+start = s.index("void msm_dp_bridge_atomic_enable(")
+end = s.index("\nvoid msm_dp_bridge_atomic_disable(", start)
+part = s[start:end]
+part = once(part, "\tbool force_link_train = false;", "\tbool force_link_train = false;\n\tbool aux_initialized_here = false;", "AUX init ownership")
+part = once(part, "\tif (!msm_dp_display->msm_dp_mode.drm_mode.clock)",
+            "\tmsm_dp_display->a14_enable_aborted = false;\n\tif (!msm_dp_display->msm_dp_mode.drm_mode.clock)",
+            "reset abort state")
+part = once(part, "\t\tmsm_dp_display_host_phy_init(msm_dp_display);\n\t\tforce_link_train = true;",
+            "\t\taux_initialized_here = msm_dp_display_host_phy_init(msm_dp_display);\n\t\tforce_link_train = true;",
+            "record AUX init ownership")
+part = once(part, "\trc = msm_dp_ctrl_on_link(msm_dp_display->ctrl);", r"""\tif (!dp->is_edp && !dp->power_on &&
+\t    of_device_is_compatible(dp->pdev->dev.of_node, "qcom,glymur-dp") &&
+\t    READ_ONCE(a14_check_sink_before_link)) {
+\t\trc = msm_dp_a14_check_sink(msm_dp_display);
+\t\tif (rc) {
+\t\t\tdev_warn(&dp->pdev->dev,
+\t\t\t\t "A14-DP: link enable skipped after sink check rc=%d\n", rc);
+\t\t\t/* Balance only the resources acquired by this enable. */
+\t\t\tif (aux_initialized_here)
+\t\t\t\tmsm_dp_display_host_phy_exit(msm_dp_display);
+\t\t\tmsm_dp_display->a14_enable_aborted = true;
+\t\t\tpm_runtime_put_sync(&dp->pdev->dev);
+\t\t\treturn;
+\t\t}
+\t}
+
+\trc = msm_dp_ctrl_on_link(msm_dp_display->ctrl);""".replace(r"\t", "\t"), "pre-link sink check")
+s = s[:start] + part + s[end:]
+
+start = s.index("void msm_dp_bridge_atomic_disable(")
+end = s.index("\nvoid msm_dp_bridge_mode_set(", start)
+part = s[start:end]
+part = once(part, "\tmsm_dp_ctrl_push_idle(msm_dp_display->ctrl);", """\t/* No main link was started, and the enable PM reference is gone. */
+\tif (msm_dp_display->a14_enable_aborted)
+\t\treturn;
+
+\tmsm_dp_ctrl_push_idle(msm_dp_display->ctrl);""", "skip idle writes after rejected enable")
+part = once(part, "\tif (dp->is_edp)\n\t\tmsm_dp_hpd_unplug_handle(msm_dp_display);", """\tif (msm_dp_display->a14_enable_aborted) {
+\t\tmsm_dp_display->a14_enable_aborted = false;
+\t\treturn;
+\t}
+
+\tif (dp->is_edp)
+\t\tmsm_dp_hpd_unplug_handle(msm_dp_display);""", "avoid duplicate PM put after rejected enable")
+s = s[:start] + part + s[end:]
+p.write_text(s)
+
+PY
+
       echo "All ASUS A14 kernel patches applied successfully"
     '';
   });
