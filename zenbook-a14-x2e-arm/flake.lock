@@ -1,5 +1,24 @@
 {
   "nodes": {
+    "a14": {
+      "inputs": {
+        "audioreach-topology": "audioreach-topology",
+        "glymur-kernel": "glymur-kernel",
+        "linux-firmware-qcc2072": "linux-firmware-qcc2072",
+        "nixpkgs": "nixpkgs",
+        "windows-firmware": "windows-firmware"
+      },
+      "locked": {
+        "lastModified": 1789130042,
+        "narHash": "sha256-ubY2JasK6wERAoCVhIU/RQMZ848YG1QQj0P/ExrS6Vo=",
+        "path": "/home/chris/Projects/linux-zenbook-a14-arm",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/chris/Projects/linux-zenbook-a14-arm",
+        "type": "path"
+      }
+    },
     "audioreach-topology": {
       "flake": false,
       "locked": {
@@ -180,11 +199,11 @@
         "nixpkgs-fex": "nixpkgs-fex"
       },
       "locked": {
-        "lastModified": 1788397366,
-        "narHash": "sha256-b8m3v+Ecl9ia8oMuUo6ycj/cinjXsuZkbn4Fp+9+0oo=",
+        "lastModified": 1788401028,
+        "narHash": "sha256-cOGQ2uCt1uQzpjlhihIjrggT5vj++j4Jzb8I5ZtB9OU=",
         "owner": "chrispouliot",
         "repo": "hytale-launcher-arm-nix",
-        "rev": "bce12510a9d091eb430b75ae2dcc479bd45ad24e",
+        "rev": "a7de259c1bea4990a9c956de2d92905ab6fbd68e",
         "type": "github"
       },
       "original": {
@@ -274,18 +293,32 @@
         "type": "github"
       }
     },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1789006805,
+        "narHash": "sha256-xB8mKMOx1IA9vTDNLmJZ6n4wCMq/cuWBBOzGCRnqxrU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
-        "audioreach-topology": "audioreach-topology",
+        "a14": "a14",
         "bubbles": "bubbles",
         "calendar": "calendar",
         "decibels-src": "decibels-src",
-        "glymur-kernel": "glymur-kernel",
         "hytale-arm": "hytale-arm",
-        "linux-firmware-qcc2072": "linux-firmware-qcc2072",
         "medialine": "medialine",
         "nix-flatpak": "nix-flatpak",
-        "nixpkgs": "nixpkgs",
+        "nixpkgs": "nixpkgs_2",
         "touchpad-speed-control": "touchpad-speed-control",
         "vireo": "vireo",
         "wsf": "wsf"
@@ -391,6 +424,20 @@
         "type": "git",
         "url": "file:///home/chris/Projects/vireo"
       }
+    },
+    "windows-firmware": {
+      "flake": false,
+      "locked": {
+        "path": "./firmware",
+        "type": "path"
+      },
+      "original": {
+        "path": "./firmware",
+        "type": "path"
+      },
+      "parent": [
+        "a14"
+      ]
     },
     "wsf": {
       "inputs": {

@@ -1,6 +1,6 @@
 { pkgs, ... }:
-
 {
+  imports = [ ./a14-hytale-performance ];
   programs.hytale.enable = true;
 
   # Steam and other x86 programs: stock FEX via the same binfmt shim,

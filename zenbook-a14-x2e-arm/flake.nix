@@ -12,26 +12,7 @@
       flake = false;
     };
 
-    glymur-kernel = {
-      url = "github:linux-msm/laptops-kernel/51231839d5ef007638bd1c3500e6a76b337a66f3";
-      flake = false;
-    };
-
-    # Source used to build the board-specific AudioReach topology.
-    # The exact revision is pinned in flake.lock.
-    audioreach-topology = {
-      url = "github:linux-msm/audioreach-topology";
-      flake = false;
-    };
-
-    # QCC2072 Wi-Fi firmware update from 2026-08-12.
-    #
-    # Contains:
-    # WLAN.COL.1.0.c2-00228-QCACOLSWPL_V1_TO_SILICON-1
-    linux-firmware-qcc2072 = {
-      url = "git+https://gitlab.com/kernel-firmware/linux-firmware.git?rev=25c06030aa434817928ace452c06f095f14729d3";
-      flake = false;
-    };
+    a14.url = "path:/home/chris/Projects/linux-zenbook-a14-arm";
 
     bubbles = {
       #url = "git+file:///home/chris/Projects/bubbles";
@@ -72,7 +53,7 @@
       hytale-arm,
       nix-flatpak,
       decibels-src,
-      glymur-kernel,
+      a14,
       bubbles,
       vireo,
       wsf,
@@ -80,82 +61,7 @@
       ...
     }:
     let
-      # ------------------------------------------------------------
-      # Architectures
-      # ------------------------------------------------------------
-
-      buildSystem = "x86_64-linux";
       targetSystem = "aarch64-linux";
-
-      bootstrapPkgs = nixpkgs.legacyPackages.${buildSystem};
-
-
-      # ------------------------------------------------------------
-      # Patched nixpkgs used by the cross-built installer ISO
-      # ------------------------------------------------------------
-
-      # The installer ISO needs explicit device-tree support so GRUB can
-      # load the ASUS UX3407NA DTB before starting the custom kernel.
-      patchedNixpkgs =
-        (bootstrapPkgs.applyPatches {
-          name = "nixpkgs-a14";
-
-          src = nixpkgs;
-
-          patches = [
-            (bootstrapPkgs.fetchpatch {
-              # nixos/iso-image: add devicetree support
-              url = "https://github.com/NixOS/nixpkgs/commit/de1fdb6310af8f70c98746ba4550dc2799a03621.patch";
-              hash = "sha256-brqJxblmqWFAk8JgxmxXeHoiaWiQtsCsOzht/WlH5eE=";
-            })
-          ];
-        }).overrideAttrs
-          {
-            allowSubstitutes = true;
-          };
-
-
-      # ------------------------------------------------------------
-      # Cross-built ARM64 installer ISO
-      # ------------------------------------------------------------
-
-      # Build on x86_64, produce ARM64.
-      pkgsCross = import patchedNixpkgs {
-        localSystem.system = buildSystem;
-        crossSystem.system = targetSystem;
-
-        allowUnsupportedSystem = true;
-
-        config = {
-          allowUnfree = true;
-        };
-      };
-
-      a14KernelPackagesCross = pkgsCross.callPackage ./kernel.nix {
-        glymurSrc = glymur-kernel;
-      };
-
-      a14Iso = nixpkgs.lib.nixosSystem {
-        specialArgs = {
-          inherit inputs;
-        };
-
-        modules = [
-          "${patchedNixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
-
-          ./a14.nix
-
-          {
-            nixpkgs.pkgs = pkgsCross;
-            boot.kernelPackages = a14KernelPackagesCross;
-          }
-        ];
-      };
-
-
-      # ------------------------------------------------------------
-      # Native ARM64 installed system
-      # ------------------------------------------------------------
 
       # This package set is intended to run natively on the A14.
       #
@@ -169,16 +75,22 @@
         };
       };
 
-      a14KernelPackagesNative = pkgsNative.callPackage ./kernel.nix {
-        glymurSrc = glymur-kernel;
-      };
-
       a14System = nixpkgs.lib.nixosSystem {
         specialArgs = {
           inherit inputs;
         };
 
         modules = [
+          # Firefox with custom FFMPEG with l4v2 video decode
+          ./firefox-a14
+          
+          # Power mode settings (schedutil + quiet default, performancemode command for performance governor
+          # and normal fans)
+          ./a14-power-mode
+          {
+            services.a14-power-mode.enable = true;
+            services.a14-power-mode.users = [ "chris" ];
+          }
           # Wayland Scroll Factor, allows changing touchpad speed
           wsf.nixosModules.default
           {
@@ -224,7 +136,8 @@
           ./hardware-configuration.nix
 
           # Common A14 platform/kernel/firmware configuration.
-          ./a14.nix
+          a14.nixosModules.default
+          ./personal.nix
 
           # Installed-system configuration: GNOME, systemd-boot,
           # users, SSH, PipeWire, etc.
@@ -232,7 +145,6 @@
 
           {
             nixpkgs.pkgs = pkgsNative;
-            boot.kernelPackages = a14KernelPackagesNative;
           }
         ];
       };
@@ -242,14 +154,13 @@
       # Build outputs from the x86_64 build VM
       # ------------------------------------------------------------
 
-      packages.${buildSystem} = {
-        default = a14Iso.config.system.build.isoImage;
-
-        iso = a14Iso.config.system.build.isoImage;
-
-        kernel = a14KernelPackagesCross.kernel;
+      packages.x86_64-linux.iso = a14.lib.mkIso {
+        buildSystem = "x86_64-linux";
+        firmwareSource = ./firmware;
       };
-
+      packages.aarch64-linux.iso = a14.lib.mkIso {
+        firmwareSource = ./firmware;
+      };
 
       # ------------------------------------------------------------
       # Installed A14 system

@@ -1,0 +1,24 @@
+From: Xilin Wu <sophon@radxa.com>
+Subject: [PATCH] media: iris: allow larger capture buffer pools on HFI gen2
+
+Adapted from bridge patch 0002 for linux-msm 51231839d5ef and A14 patches.
+Set the maximum at queue initialization entry to avoid overlapping the
+A14 context-bank device changes. The functional change is identical:
+raise only HFI gen2 decoder CAPTURE limits, without changing the minimum.
+Source: radxa-pkg/libva-v4l2 commit 0e4ce1e05da1d0a92b342efc2090b9e4987035e1
+Original commit: abe302bc460e5014baa43bcf181731c3766392be
+Original Signed-off-by: Xilin Wu <sophon@radxa.com>
+
+--- a/drivers/media/platform/qcom/iris/iris_vidc.c
++++ b/drivers/media/platform/qcom/iris/iris_vidc.c
+@@ -99,6 +99,10 @@
+ {
+ 	struct iris_inst *inst = priv;
+ 	int ret;
++
++	if (inst->domain == DECODER &&
++	    inst->core->iris_firmware_data == &iris_hfi_gen2_data)
++		dst_vq->max_num_buffers = DEFAULT_MAX_HOST_BUF_COUNT;
+ 
+ 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+ 	src_vq->io_modes = VB2_MMAP | VB2_DMABUF;

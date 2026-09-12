@@ -1,0 +1,16 @@
+--- a/libavcodec/v4l2_buffers.c
++++ b/libavcodec/v4l2_buffers.c
+@@ -481,8 +481,11 @@
+ 
+     case AV_PIX_FMT_NV12:
+     case AV_PIX_FMT_NV21:
+-
+-        layer->format = avbuf->context->av_pix_fmt == AV_PIX_FMT_NV12 ?
++    case AV_PIX_FMT_P010LE:
++
++        layer->format = avbuf->context->av_pix_fmt == AV_PIX_FMT_P010LE ?
++            DRM_FORMAT_P010 :
++            avbuf->context->av_pix_fmt == AV_PIX_FMT_NV12 ?
+             DRM_FORMAT_NV12 : DRM_FORMAT_NV21;
+ 
+         if (avbuf->num_planes > 1)
